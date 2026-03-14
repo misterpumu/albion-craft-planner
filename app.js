@@ -1,6 +1,9 @@
 const storageKey = "albion-crafteo-inventory-v3";
 const routeSettingsKey = "albion-crafteo-route-v1";
+const destinyStorageKey = "albion-crafteo-destiny-v1";
+const viewStorageKey = "albion-crafteo-view-v1";
 const ALL_CATEGORIES = "__ALL__";
+const ALL_TRACKS = "__ALL_TRACKS__";
 const MATERIAL_NAME_ALIASES = {
   "Baroque Cloth": "Exquisite Cloth",
   "Cured Leather": "Worked Leather"
@@ -68,6 +71,8 @@ const QUICK_ITEMS = RESOURCE_LINES.flatMap((line) =>
 
 const inventory = loadInventory();
 const routeSettings = loadRouteSettings();
+const destinySettings = loadDestinySettings();
+let currentView = loadCurrentView();
 let recipes = [];
 let categoryOptions = [ALL_CATEGORIES];
 let itemIconMap = new Map();
@@ -80,6 +85,8 @@ let plannerInventoryKey = "";
 let pickerRenderTimer = null;
 let searchableMaterials = [];
 let searchableTargets = [];
+let destinyLines = [];
+let destinyTrackOptions = [ALL_TRACKS];
 let plannerDirty = true;
 let plannerRunning = false;
 let targetPlannerRunning = false;
@@ -113,15 +120,26 @@ const bestTier = document.querySelector("#best-tier");
 const planStepsCount = document.querySelector("#plan-steps-count");
 const reachableCount = document.querySelector("#reachable-count");
 const trackedCount = document.querySelector("#tracked-count");
+const appNav = document.querySelector(".app-nav");
+const appViews = Array.from(document.querySelectorAll(".app-view"));
+const destinyEnabledInput = document.querySelector("#destiny-enabled");
+const destinySearchInput = document.querySelector("#destiny-search");
+const destinyTrackFilter = document.querySelector("#destiny-track-filter");
+const destinyUnlockAllButton = document.querySelector("#destiny-unlock-all");
+const destinyLockAllButton = document.querySelector("#destiny-lock-all");
+const destinySummaryText = document.querySelector("#destiny-summary-text");
+const destinyBoardList = document.querySelector("#destiny-board-list");
 
 bootstrap();
 
 function bootstrap() {
   bindEvents();
+  applyCurrentView();
   loadCatalog();
 }
 
 function bindEvents() {
+  appNav.addEventListener("click", handleViewSwitch);
   inventoryList.addEventListener("input", handleInventoryInput);
   inventoryList.addEventListener("change", handleInventoryCommit);
   inventoryList.addEventListener("click", handleInventoryRemove);
@@ -132,6 +150,12 @@ function bindEvents() {
   searchInput.addEventListener("input", () => renderPlanner(false));
   categoryFilter.addEventListener("change", () => renderPlanner(false));
   startingCitySelect.addEventListener("change", handleStartingCityChange);
+  destinyEnabledInput.addEventListener("change", handleDestinyToggle);
+  destinySearchInput.addEventListener("input", renderDestinyBoard);
+  destinyTrackFilter.addEventListener("change", renderDestinyBoard);
+  destinyUnlockAllButton.addEventListener("click", unlockAllDestinyLines);
+  destinyLockAllButton.addEventListener("click", lockAllDestinyLines);
+  destinyBoardList.addEventListener("change", handleDestinyTierChange);
   analyzeButton.addEventListener("click", () => {
     if (plannerRunning) return;
     plannerDirty = false;
@@ -264,13 +288,18 @@ function loadCatalog() {
     .filter(isFinalRecipe)
     .filter((recipe) => !recipe.enchanted)
     .sort((left, right) => scoreRecipe(right) - scoreRecipe(left));
+  destinyLines = buildDestinyLines(recipes);
+  destinyTrackOptions = [ALL_TRACKS, ...new Set(destinyLines.map((line) => line.track))];
   initializePlannerWorker(recipes);
   searchableMaterials = collectSearchableMaterials(recipes);
-  searchableTargets = collectSearchableTargets(finalRecipeCandidates);
-  categoryOptions = [ALL_CATEGORIES, ...new Set(recipes.filter(isFinalRecipe).map((recipe) => recipe.category))];
+  searchableTargets = collectSearchableTargets(getAvailableFinalRecipeCandidates());
+  categoryOptions = [ALL_CATEGORIES, ...new Set(getAvailableFinalRecipeCandidates().map((recipe) => recipe.category))];
 
   renderInventory();
   renderMaterialPicker();
+  applyDestinySettingsToControls();
+  renderDestinyTrackOptions();
+  renderDestinyBoard();
   renderTargetPicker();
   renderSelectedTarget();
   targetPlan.innerHTML = `<p class="helper-text">Select a target item and click Analyze Target to see the required chain.</p>`;
@@ -289,18 +318,71 @@ function handleStartingCityChange() {
   markPlannerDirty();
 }
 
+function handleViewSwitch(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLButtonElement)) return;
+  const nextView = target.dataset.view;
+  if (!nextView || nextView === currentView) return;
+
+  currentView = nextView;
+  saveCurrentView();
+  applyCurrentView();
+}
+
+function handleDestinyToggle() {
+  destinySettings.enabled = destinyEnabledInput.checked;
+  saveDestinySettings();
+  refreshDestinyFilteredData();
+}
+
+function handleDestinyTierChange(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) return;
+  const destinyKey = target.dataset.destinyKey;
+  if (!destinyKey) return;
+
+  const tier = Number(target.value) || 0;
+  if (tier > 0) {
+    destinySettings.lines[destinyKey] = tier;
+  } else {
+    delete destinySettings.lines[destinyKey];
+  }
+
+  saveDestinySettings();
+  renderDestinySummary();
+  refreshDestinyFilteredData();
+}
+
+function unlockAllDestinyLines() {
+  destinyLines.forEach((line) => {
+    destinySettings.lines[line.key] = line.maxTier;
+  });
+  saveDestinySettings();
+  renderDestinyBoard();
+  refreshDestinyFilteredData();
+}
+
+function lockAllDestinyLines() {
+  destinySettings.lines = {};
+  saveDestinySettings();
+  renderDestinyBoard();
+  refreshDestinyFilteredData();
+}
+
 function buildPlannerRecipes(catalogRecipes) {
   const baseRecipes = catalogRecipes
     .filter((recipe) => recipe.exact)
-    .map((recipe) => ({
-      ...recipe,
-      ingredients: normalizeIngredients(recipe.ingredients),
-      outputName: recipe.name,
-      outputId: String(recipe.id || "").split("@")[0],
-      plannerCategory: recipe.category,
-      plannerType: "craft",
-      priority: recipePriority(recipe.category)
-    }));
+    .map((recipe) =>
+      attachDestinyMetadata({
+        ...recipe,
+        ingredients: normalizeIngredients(recipe.ingredients),
+        outputName: recipe.name,
+        outputId: String(recipe.id || "").split("@")[0],
+        plannerCategory: recipe.category,
+        plannerType: "craft",
+        priority: recipePriority(recipe.category)
+      })
+    );
 
   const exactOutputNames = new Set(baseRecipes.map((recipe) => recipe.outputName));
 
@@ -330,23 +412,25 @@ function buildSupplementalRecipes(existingOutputs = new Set()) {
 
   return standardAccessories
     .filter((entry) => !existingOutputs.has(entry.name))
-    .map((entry) => ({
-      id: `${entry.id}@0`,
-      name: entry.name,
-      outputName: entry.name,
-      outputId: entry.id,
-      category: "Accesorios",
-      plannerCategory: "Accesorios",
-      plannerType: "craft",
-      tier: `${entry.tier}.0`,
-      output: 1,
-      source: "Supplemental standard recipe",
-      craftedAt: entry.station,
-      ingredients: entry.ingredients,
-      exact: false,
-      enchanted: false,
-      priority: recipePriority("Accesorios")
-    }));
+    .map((entry) =>
+      attachDestinyMetadata({
+        id: `${entry.id}@0`,
+        name: entry.name,
+        outputName: entry.name,
+        outputId: entry.id,
+        category: "Accesorios",
+        plannerCategory: "Accesorios",
+        plannerType: "craft",
+        tier: `${entry.tier}.0`,
+        output: 1,
+        source: "Supplemental standard recipe",
+        craftedAt: entry.station,
+        ingredients: entry.ingredients,
+        exact: false,
+        enchanted: false,
+        priority: recipePriority("Accesorios")
+      })
+    );
 }
 
 function isLikelyNonCraftable(name) {
@@ -383,25 +467,27 @@ function buildRefiningRecipes() {
         ingredients[line.refinedNames[index - 1]] = 1;
       }
 
-      refineRecipes.push({
-        id: `REFINE_${buildTieredId(tier, line.refinedIdPrefix)}`,
-        name: `Refine ${refinedName}`,
-        outputName: refinedName,
-        outputId: buildTieredId(tier, line.refinedIdPrefix),
-        category: "Refining",
-        plannerCategory: "Refining",
-        plannerType: "refine",
-        tier: `${tier}.0`,
-        output: 1,
-        source: "Base refining rule",
-        craftedAt: refineStationFor(line.family),
-        ingredients,
-        exact: false,
-        enchanted: false,
-        priority: tier * 6
+        refineRecipes.push(
+          attachDestinyMetadata({
+            id: `REFINE_${buildTieredId(tier, line.refinedIdPrefix)}`,
+            name: `Refine ${refinedName}`,
+            outputName: refinedName,
+            outputId: buildTieredId(tier, line.refinedIdPrefix),
+            category: "Refining",
+            plannerCategory: "Refining",
+            plannerType: "refine",
+            tier: `${tier}.0`,
+            output: 1,
+            source: "Base refining rule",
+            craftedAt: refineStationFor(line.family),
+            ingredients,
+            exact: false,
+            enchanted: false,
+            priority: tier * 6
+          })
+        );
       });
     });
-  });
 
   return refineRecipes;
 }
@@ -419,6 +505,109 @@ function refineStationFor(family) {
     default:
       return "Refining Station";
   }
+}
+
+function attachDestinyMetadata(recipe) {
+  const tier = parseTier(recipe.tier);
+  if (recipe.plannerType === "refine") {
+    const family = getRefiningFamilyForRecipe(recipe) || "Refining";
+    return {
+      ...recipe,
+      destinyKey: `refine:${family}`,
+      destinyLabel: `${translateFamilyName(family)} refining`,
+      destinyTrack: "Refining",
+      destinyGroup: refineStationFor(family),
+      destinyTier: tier
+    };
+  }
+
+  const normalizedId = String(recipe.id || "")
+    .replace(/@.*$/, "")
+    .replace(/^T\d+_/, "");
+  return {
+    ...recipe,
+    destinyKey: `craft:${normalizedId}`,
+    destinyLabel: normalizeDestinyLabel(recipe.outputName),
+    destinyTrack: inferDestinyTrack(recipe),
+    destinyGroup: recipe.craftedAt || translateCategory(recipe.category),
+    destinyTier: tier
+  };
+}
+
+function normalizeDestinyLabel(name) {
+  return String(name || "")
+    .replace(/\s+\.\d+$/, "")
+    .replace(/^(Beginner's|Novice's|Journeyman's|Adept's|Expert's|Master's|Grandmaster's|Elder's)\s+/, "")
+    .trim();
+}
+
+function inferDestinyTrack(recipe) {
+  if (recipe.plannerType === "refine") return "Refining";
+
+  const station = recipe.craftedAt || "";
+  const category = recipe.category || "";
+
+  if (category === "Armas") return "Weapons";
+  if (category === "Armadura") return "Armor";
+  if (category === "Accesorios") return "Accessories";
+  if (category === "Consumibles") return "Consumables";
+  if (category === "Monturas") return "Mounts";
+  if (station === "Mage Tower" || station === "Arcane Forge") return "Magic Gear";
+  if (station === "Cook" || station === "Alchemist") return "Consumables";
+  return "Other";
+}
+
+function translateFamilyName(family) {
+  switch (family) {
+    case "Metal":
+      return "Metal";
+    case "Madera":
+      return "Wood";
+    case "Fibra":
+      return "Fiber";
+    case "Cuero":
+      return "Leather";
+    default:
+      return family;
+  }
+}
+
+function buildDestinyLines(recipeList) {
+  const lineMap = new Map();
+
+  recipeList
+    .filter((recipe) => !recipe.enchanted)
+    .filter((recipe) => recipe.destinyKey)
+    .filter((recipe) => recipe.destinyTier >= 2 && recipe.destinyTier <= 8)
+    .forEach((recipe) => {
+      if (!lineMap.has(recipe.destinyKey)) {
+        lineMap.set(recipe.destinyKey, {
+          key: recipe.destinyKey,
+          label: recipe.destinyLabel,
+          track: recipe.destinyTrack,
+          group: recipe.destinyGroup,
+          iconId: recipe.outputId,
+          minTier: recipe.destinyTier,
+          maxTier: recipe.destinyTier
+        });
+        return;
+      }
+
+      const existing = lineMap.get(recipe.destinyKey);
+      existing.minTier = Math.min(existing.minTier, recipe.destinyTier);
+      existing.maxTier = Math.max(existing.maxTier, recipe.destinyTier);
+      if (!existing.iconId && recipe.outputId) {
+        existing.iconId = recipe.outputId;
+      }
+    });
+
+  return Array.from(lineMap.values()).sort((left, right) => {
+    const trackDiff = left.track.localeCompare(right.track);
+    if (trackDiff !== 0) return trackDiff;
+    const groupDiff = left.group.localeCompare(right.group);
+    if (groupDiff !== 0) return groupDiff;
+    return left.label.localeCompare(right.label);
+  });
 }
 
 function buildItemIconMap(recipeList) {
@@ -572,6 +761,77 @@ function renderCategoryOptions() {
   categoryFilter.innerHTML = categoryOptions
     .map((option) => `<option value="${option}">${translateCategory(option)}</option>`)
     .join("");
+}
+
+function renderDestinyTrackOptions() {
+  destinyTrackFilter.innerHTML = destinyTrackOptions
+    .map((track) => `<option value="${track}">${track === ALL_TRACKS ? "All tracks" : track}</option>`)
+    .join("");
+  destinyTrackFilter.value = destinySettings.track || ALL_TRACKS;
+}
+
+function renderDestinyBoard() {
+  if (!destinyBoardList) return;
+
+  const search = destinySearchInput.value.trim().toLowerCase();
+  destinySettings.track = destinyTrackFilter.value || ALL_TRACKS;
+  saveDestinySettings();
+
+  const visibleLines = destinyLines
+    .filter((line) => destinySettings.track === ALL_TRACKS || line.track === destinySettings.track)
+    .filter((line) => {
+      if (!search) return true;
+      const haystack = `${line.label} ${line.track} ${line.group}`.toLowerCase();
+      return haystack.includes(search);
+    });
+
+  destinyBoardList.innerHTML = "";
+
+  visibleLines.forEach((line) => {
+    const row = document.createElement("article");
+    row.className = "destiny-line";
+    row.innerHTML = `
+      <div class="destiny-line__main">
+        <span class="item-avatar">
+          <img class="item-avatar__img" alt="" loading="lazy">
+          <span class="item-avatar__fallback"></span>
+        </span>
+        <div class="destiny-line__meta">
+          <p class="destiny-line__track">${line.track} | ${line.group}</p>
+          <h3 class="destiny-line__name">${line.label}</h3>
+          <p class="destiny-line__detail">Available tiers: T${line.minTier} to T${line.maxTier}</p>
+        </div>
+      </div>
+      <select class="destiny-line__select" data-destiny-key="${line.key}">
+        ${buildDestinyTierOptions(line)}
+      </select>
+    `;
+    hydrateIcon(row.querySelector(".item-avatar"), line.label, line.iconId);
+    destinyBoardList.appendChild(row);
+  });
+
+  if (!visibleLines.length) {
+    destinyBoardList.innerHTML = `<p class="helper-text">No Destiny Board lines match that search.</p>`;
+  }
+
+  renderDestinySummary(visibleLines.length);
+}
+
+function buildDestinyTierOptions(line) {
+  const currentTier = Number(destinySettings.lines[line.key] || 0);
+  const options = [`<option value="0"${currentTier === 0 ? " selected" : ""}>Locked</option>`];
+
+  for (let tier = line.minTier; tier <= line.maxTier; tier += 1) {
+    options.push(`<option value="${tier}"${currentTier === tier ? " selected" : ""}>Unlocked to T${tier}</option>`);
+  }
+
+  return options.join("");
+}
+
+function renderDestinySummary(visibleCount = destinyLines.length) {
+  const unlockedLines = destinyLines.filter((line) => Number(destinySettings.lines[line.key] || 0) > 0).length;
+  const filteringText = destinySettings.enabled ? "Filtering is enabled." : "Filtering is disabled.";
+  destinySummaryText.textContent = `${filteringText} ${unlockedLines} of ${destinyLines.length} lines configured. Showing ${visibleCount} line(s).`;
 }
 
 function renderTargetPicker() {
@@ -874,7 +1134,7 @@ async function renderTargetPlan(targetName, desiredAmount) {
 function buildReachablePlans(sourceInventory) {
   const plans = [];
   const relevantRecipeSet = collectRelevantRecipes(sourceInventory);
-  const candidatePool = finalRecipeCandidates.filter((recipe) => relevantRecipeSet.has(recipe.id));
+  const candidatePool = getAvailableFinalRecipeCandidates().filter((recipe) => relevantRecipeSet.has(recipe.id));
 
   for (const recipe of candidatePool) {
     const result = craftAsManyAsPossible(recipe, cloneStock(sourceInventory));
@@ -899,7 +1159,7 @@ function buildReachablePlans(sourceInventory) {
   }
 
   if (!plans.length) {
-    for (const recipe of recipes.filter((entry) => entry.plannerType === "refine" && relevantRecipeSet.has(entry.id))) {
+    for (const recipe of recipes.filter((entry) => entry.plannerType === "refine" && relevantRecipeSet.has(entry.id) && isRecipeUnlocked(entry))) {
       const result = craftAsManyAsPossible(recipe, cloneStock(sourceInventory));
       if (!result) continue;
       const consumed = collectConsumed(sourceInventory, result.stock);
@@ -929,6 +1189,9 @@ function buildReachablePlans(sourceInventory) {
 }
 
 function planTargetRequirements(recipe, desiredAmount, sourceInventory) {
+  if (!isRecipeUnlocked(recipe)) {
+    return { stock: cloneStock(sourceInventory), steps: [], missing: { [recipe.outputName]: desiredAmount } };
+  }
   const stock = cloneStock(sourceInventory);
   const steps = [];
   const missing = {};
@@ -952,7 +1215,7 @@ function collectRelevantRecipes(sourceInventory) {
 
   while (queue.length) {
     const itemName = queue.shift();
-    const dependentRecipes = ingredientRecipeIndex.get(itemName) || [];
+    const dependentRecipes = (ingredientRecipeIndex.get(itemName) || []).filter(isRecipeUnlocked);
 
     dependentRecipes.forEach((recipe) => {
       if (!relevant.has(recipe.id)) {
@@ -1060,7 +1323,7 @@ function satisfyNeed(itemName, count, stock, trail, depth) {
   }
 
   const missing = count - available;
-  const producers = (recipeIndex.get(itemName) || []).filter((recipe) => !trail.has(recipe.outputName));
+  const producers = (recipeIndex.get(itemName) || []).filter((recipe) => !trail.has(recipe.outputName) && isRecipeUnlocked(recipe));
   if (!producers.length) return null;
 
   let best = null;
@@ -1112,7 +1375,7 @@ function resolveNeedWithRequirements(itemName, count, stock, trail, depth) {
   const missingCount = count - available;
   stock[itemName] = 0;
 
-  const producers = (recipeIndex.get(itemName) || []).filter((recipe) => !recipe.enchanted && !trail.has(recipe.outputName));
+  const producers = (recipeIndex.get(itemName) || []).filter((recipe) => !recipe.enchanted && !trail.has(recipe.outputName) && isRecipeUnlocked(recipe));
   if (!producers.length) {
     return {
       stock,
@@ -1223,6 +1486,44 @@ function collectSearchableTargets(recipeList) {
     .map((recipe) => recipe.outputName)
     .filter((name, index, list) => list.indexOf(name) === index)
     .sort((left, right) => left.localeCompare(right));
+}
+
+function isRecipeUnlocked(recipe) {
+  if (!destinySettings.enabled) return true;
+  if (!recipe || recipe.enchanted) return false;
+  if (!recipe.destinyKey) return true;
+  if ((recipe.destinyTier || parseTier(recipe.tier)) < 2) return true;
+
+  return Number(destinySettings.lines[recipe.destinyKey] || 0) >= (recipe.destinyTier || parseTier(recipe.tier));
+}
+
+function getAvailableFinalRecipeCandidates() {
+  return finalRecipeCandidates.filter(isRecipeUnlocked);
+}
+
+function refreshDestinyFilteredData() {
+  searchableTargets = collectSearchableTargets(getAvailableFinalRecipeCandidates());
+  categoryOptions = [ALL_CATEGORIES, ...new Set(getAvailableFinalRecipeCandidates().map((recipe) => recipe.category))];
+  renderCategoryOptions();
+  renderTargetPicker();
+  renderSelectedTarget();
+  renderDestinyBoard();
+
+  if (selectedTargetName) {
+    const targetRecipe = getPrimaryRecipeForName(selectedTargetName);
+    if (!targetRecipe) {
+      selectedTargetName = "";
+      renderSelectedTarget();
+      targetPlan.innerHTML = `<p class="helper-text">The current target is locked by your Destiny Board filter.</p>`;
+    } else {
+      targetPlan.innerHTML = `<p class="helper-text">Destiny Board updated. Run Analyze Target again to refresh the requirement plan.</p>`;
+    }
+  }
+
+  plannerInventoryKey = "";
+  plannerCache = [];
+  markPlannerDirty();
+  renderPlanner(false);
 }
 
 function looksLikeMaterial(name) {
@@ -1337,6 +1638,28 @@ function loadRouteSettings() {
   }
 }
 
+function loadDestinySettings() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(destinyStorageKey) || "{}");
+    return {
+      enabled: Boolean(parsed.enabled),
+      track: parsed.track || ALL_TRACKS,
+      lines: typeof parsed.lines === "object" && parsed.lines ? parsed.lines : {}
+    };
+  } catch {
+    return {
+      enabled: false,
+      track: ALL_TRACKS,
+      lines: {}
+    };
+  }
+}
+
+function loadCurrentView() {
+  const value = localStorage.getItem(viewStorageKey);
+  return value === "destiny" ? "destiny" : "planner";
+}
+
 function saveInventory() {
   localStorage.setItem(storageKey, JSON.stringify(inventory));
 }
@@ -1345,8 +1668,30 @@ function saveRouteSettings() {
   localStorage.setItem(routeSettingsKey, JSON.stringify(routeSettings));
 }
 
+function saveDestinySettings() {
+  localStorage.setItem(destinyStorageKey, JSON.stringify(destinySettings));
+}
+
+function saveCurrentView() {
+  localStorage.setItem(viewStorageKey, currentView);
+}
+
 function applyRouteSettingsToControls() {
   startingCitySelect.value = routeSettings.startingCity;
+}
+
+function applyDestinySettingsToControls() {
+  destinyEnabledInput.checked = destinySettings.enabled;
+  destinyTrackFilter.value = destinySettings.track || ALL_TRACKS;
+}
+
+function applyCurrentView() {
+  appViews.forEach((view) => {
+    view.classList.toggle("is-active", view.id === `${currentView}-view`);
+  });
+  document.querySelectorAll(".app-nav__button").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.view === currentView);
+  });
 }
 
 function parseTier(tierString) {
@@ -1424,7 +1769,7 @@ function formatEstimatedAmount(value) {
 }
 
 function getPrimaryRecipeForName(name) {
-  return (recipeIndex.get(name) || []).find((recipe) => !recipe.enchanted) || null;
+  return (recipeIndex.get(name) || []).find((recipe) => !recipe.enchanted && isRecipeUnlocked(recipe)) || null;
 }
 
 function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourceText, consumedMap = {}) {
@@ -1939,7 +2284,8 @@ async function analyzeInventoryWithWorker(sourceInventory, inventoryKey) {
 
   const plans = await postWorkerRequest("analyzeInventory", {
     inventory: sourceInventory,
-    inventoryKey
+    inventoryKey,
+    destinySettings
   });
 
   return plans.map((plan) => ({
@@ -1978,6 +2324,7 @@ async function analyzeTargetWithWorker(targetName, desiredAmount, sourceInventor
     targetName,
     desiredAmount,
     inventory: sourceInventory,
-    inventoryKey: buildInventoryKey(sourceInventory)
+    inventoryKey: buildInventoryKey(sourceInventory),
+    destinySettings
   });
 }
