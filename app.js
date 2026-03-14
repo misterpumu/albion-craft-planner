@@ -1384,6 +1384,7 @@ function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourc
   const wrapper = document.createElement("section");
   wrapper.className = "target-plan-details";
   const savingsList = calculateRefiningSavings(stepEntries);
+  const travelAdvice = buildTravelAdvice(stepEntries);
 
   const stepsSection = document.createElement("section");
   stepsSection.className = "target-plan-section";
@@ -1435,6 +1436,20 @@ function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourc
     wrapper.appendChild(savingsSection);
   }
 
+  if (travelAdvice.length) {
+    const travelSection = document.createElement("section");
+    travelSection.className = "target-plan-section";
+    travelSection.innerHTML = `<h3 class="target-plan-section__title">Travel advice</h3>`;
+
+    const list = document.createElement("div");
+    list.className = "target-step-list";
+    travelAdvice.forEach((entry) => {
+      list.appendChild(buildTravelCard(entry));
+    });
+    travelSection.appendChild(list);
+    wrapper.appendChild(travelSection);
+  }
+
   return wrapper;
 }
 
@@ -1471,6 +1486,51 @@ function buildMissingItem(name, amount, metaText = `Still needed: x${formatEstim
   node.querySelector(".missing-item__name").textContent = name;
   node.querySelector(".missing-item__meta").textContent = metaText;
   hydrateIcon(node.querySelector(".item-avatar"), name);
+  return node;
+}
+
+function buildTravelAdvice(stepEntries) {
+  const advice = [];
+  const seen = new Set();
+
+  stepEntries.forEach((entry) => {
+    const destination =
+      entry.recipe.plannerType === "refine"
+        ? getBestRefiningCityForRecipe(entry.recipe)
+        : entry.recipe.craftedAt || "";
+
+    if (!destination) return;
+
+    const key = `${entry.recipe.plannerType}:${destination}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    advice.push({
+      destination,
+      type: entry.recipe.plannerType,
+      outputName: entry.recipe.outputName,
+      outputId: entry.recipe.outputId,
+      message:
+        entry.recipe.plannerType === "refine"
+          ? `While traveling, refine ${entry.recipe.outputName} in ${destination} for the best local bonus.`
+          : `Finish or continue crafting in ${destination} for ${entry.recipe.outputName}.`
+    });
+  });
+
+  return advice;
+}
+
+function buildTravelCard(entry) {
+  const template = document.querySelector("#step-card-template");
+  const node = template.content.firstElementChild.cloneNode(true);
+
+  node.querySelector(".step-card__eyebrow").textContent =
+    entry.type === "refine" ? `Travel to ${entry.destination}` : `Craft at ${entry.destination}`;
+  node.querySelector(".step-card__name").textContent = entry.outputName;
+  node.querySelector(".step-card__meta").textContent = entry.message;
+  node.querySelector(".step-card__amount").textContent = entry.destination;
+
+  hydrateIcon(node.querySelector(".item-avatar"), entry.outputName, entry.outputId);
   return node;
 }
 
