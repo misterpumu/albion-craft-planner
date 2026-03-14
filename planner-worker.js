@@ -5,6 +5,7 @@ let ingredientRecipeIndex = new Map();
 
 const inventoryAnalysisCache = new Map();
 const targetAnalysisCache = new Map();
+const relevantRecipeCache = new Map();
 
 self.onmessage = (event) => {
   const { type, requestId, payload } = event.data || {};
@@ -45,6 +46,7 @@ function initializeWorker(payload) {
     .sort((left, right) => scoreRecipe(right) - scoreRecipe(left));
   inventoryAnalysisCache.clear();
   targetAnalysisCache.clear();
+  relevantRecipeCache.clear();
 }
 
 function analyzeInventory(payload) {
@@ -55,11 +57,12 @@ function analyzeInventory(payload) {
   }
 
   const plans = [];
-  const relevantRecipeSet = collectRelevantRecipes(inventory);
+  const relevantRecipeSet = collectRelevantRecipes(inventory, cacheKey);
   const candidatePool = finalRecipeCandidates.filter((recipe) => relevantRecipeSet.has(recipe.id));
+  const sharedRecipeMemo = new Map();
 
   for (const recipe of candidatePool) {
-    const result = craftAsManyAsPossible(recipe, cloneStock(inventory));
+    const result = craftAsManyAsPossible(recipe, cloneStock(inventory), sharedRecipeMemo);
     if (!result) continue;
 
     plans.push(serializePlan(recipe, result, inventory, "Consumed materials", "This route uses the materials already present in your inventory."));
@@ -68,7 +71,7 @@ function analyzeInventory(payload) {
 
   if (!plans.length) {
     for (const recipe of recipes.filter((entry) => entry.plannerType === "refine" && relevantRecipeSet.has(entry.id))) {
-      const result = craftAsManyAsPossible(recipe, cloneStock(inventory));
+      const result = craftAsManyAsPossible(recipe, cloneStock(inventory), sharedRecipeMemo);
       if (!result) continue;
       plans.push(serializePlan(recipe, result, inventory, "Consumed materials", "This route uses the materials already present in your inventory."));
     }
@@ -163,7 +166,11 @@ function buildIngredientRecipeIndex(recipeList) {
   return index;
 }
 
-function collectRelevantRecipes(sourceInventory) {
+function collectRelevantRecipes(sourceInventory, cacheKey = buildInventoryKey(sourceInventory)) {
+  if (relevantRecipeCache.has(cacheKey)) {
+    return new Set(relevantRecipeCache.get(cacheKey));
+  }
+
   const relevant = new Set();
   const queue = Object.entries(sourceInventory)
     .filter(([, amount]) => amount > 0)
@@ -186,17 +193,17 @@ function collectRelevantRecipes(sourceInventory) {
     });
   }
 
+  relevantRecipeCache.set(cacheKey, Array.from(relevant));
   return relevant;
 }
 
-function craftAsManyAsPossible(recipe, initialStock) {
+function craftAsManyAsPossible(recipe, initialStock, sharedMemo = new Map()) {
   let currentStock = cloneStock(initialStock);
   let outputCount = 0;
   let allSteps = [];
-  const recipeMemo = new Map();
 
   while (true) {
-    const crafted = craftRecipe(recipe, currentStock, new Set(), 0, recipeMemo);
+    const crafted = craftRecipe(recipe, currentStock, new Set(), 0, sharedMemo);
     if (!crafted) break;
 
     currentStock = crafted.stock;
