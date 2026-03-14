@@ -1,5 +1,4 @@
 const storageKey = "albion-crafteo-inventory-v3";
-const refiningSettingsKey = "albion-crafteo-refining-v1";
 const ALL_CATEGORIES = "__ALL__";
 const MATERIAL_NAME_ALIASES = {
   "Baroque Cloth": "Exquisite Cloth",
@@ -57,7 +56,6 @@ const QUICK_ITEMS = RESOURCE_LINES.flatMap((line) =>
 );
 
 const inventory = loadInventory();
-const refiningSettings = loadRefiningSettings();
 let recipes = [];
 let categoryOptions = [ALL_CATEGORIES];
 let itemIconMap = new Map();
@@ -96,7 +94,6 @@ const statusText = document.querySelector("#status-text");
 const statusSpinner = document.querySelector("#status-spinner");
 const reloadDataButton = document.querySelector("#reload-data-button");
 const analyzeButton = document.querySelector("#analyze-button");
-const refiningCitySelect = document.querySelector("#refining-city");
 const bestPlan = document.querySelector("#best-plan");
 const planList = document.querySelector("#plan-list");
 const bestTier = document.querySelector("#best-tier");
@@ -121,7 +118,6 @@ function bindEvents() {
   targetPickerResults.addEventListener("click", handleTargetPickerSelect);
   searchInput.addEventListener("input", () => renderPlanner(false));
   categoryFilter.addEventListener("change", () => renderPlanner(false));
-  refiningCitySelect.addEventListener("change", handleRefiningCityChange);
   analyzeButton.addEventListener("click", () => {
     if (plannerRunning) return;
     plannerDirty = false;
@@ -245,7 +241,6 @@ function loadCatalog() {
     : "";
 
   recipes = buildPlannerRecipes(localCatalog.recipes);
-  applyRefiningSettingsToControls();
   ensureMaterials(collectAllTrackableNames(recipes));
   itemIconMap = buildItemIconMap(recipes);
   recipeIndex = buildRecipeIndex(recipes);
@@ -270,13 +265,6 @@ function loadCatalog() {
   setStatus(
     `Exact local catalog loaded (${localCatalog.recipes.length} exact recipes${generatedAt ? `, generated ${generatedAt}` : ""}).`
   );
-}
-
-function handleRefiningCityChange() {
-  refiningSettings.city = refiningCitySelect.value;
-  saveRefiningSettings();
-  plannerInventoryKey = "";
-  markPlannerDirty();
 }
 
 function buildPlannerRecipes(catalogRecipes) {
@@ -1310,29 +1298,8 @@ function loadInventory() {
   }
 }
 
-function loadRefiningSettings() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(refiningSettingsKey) || "{}");
-    return {
-      city: parsed.city || "None"
-    };
-  } catch {
-    return {
-      city: "None"
-    };
-  }
-}
-
 function saveInventory() {
   localStorage.setItem(storageKey, JSON.stringify(inventory));
-}
-
-function saveRefiningSettings() {
-  localStorage.setItem(refiningSettingsKey, JSON.stringify(refiningSettings));
-}
-
-function applyRefiningSettingsToControls() {
-  refiningCitySelect.value = refiningSettings.city;
 }
 
 function parseTier(tierString) {
@@ -1370,22 +1337,23 @@ function hydrateIcon(container, name, iconId = itemIconMap.get(name)) {
   };
 }
 
-function calculateRefiningSavings(stepEntries, selectedCity) {
-  if (!selectedCity || selectedCity === "None") return [];
-
+function calculateRefiningSavings(stepEntries) {
   const savings = {};
   stepEntries.forEach((entry) => {
     if (entry.recipe.plannerType !== "refine") return;
     const bestCity = getBestRefiningCityForRecipe(entry.recipe);
-    if (bestCity !== selectedCity) return;
+    if (!bestCity) return;
 
     Object.entries(entry.recipe.ingredients).forEach(([name, amount]) => {
-      savings[name] = (savings[name] || 0) + amount * entry.runs * REFINING_CITY_RETURN_RATE;
+      if (!savings[name]) {
+        savings[name] = { amount: 0, city: bestCity };
+      }
+      savings[name].amount += amount * entry.runs * REFINING_CITY_RETURN_RATE;
     });
   });
 
   return Object.entries(savings)
-    .filter(([, amount]) => amount > 0)
+    .filter(([, entry]) => entry.amount > 0)
     .sort((left, right) => left[0].localeCompare(right[0]));
 }
 
@@ -1415,7 +1383,7 @@ function getPrimaryRecipeForName(name) {
 function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourceText) {
   const wrapper = document.createElement("section");
   wrapper.className = "target-plan-details";
-  const savingsList = calculateRefiningSavings(stepEntries, refiningSettings.city);
+  const savingsList = calculateRefiningSavings(stepEntries);
 
   const stepsSection = document.createElement("section");
   stepsSection.className = "target-plan-section";
@@ -1454,12 +1422,14 @@ function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourc
   if (savingsList.length) {
     const savingsSection = document.createElement("section");
     savingsSection.className = "target-plan-section";
-    savingsSection.innerHTML = `<h3 class="target-plan-section__title">Estimated city bonus savings</h3>`;
+    savingsSection.innerHTML = `<h3 class="target-plan-section__title">Estimated best city savings</h3>`;
 
     const grid = document.createElement("div");
     grid.className = "missing-grid";
-    savingsList.forEach(([name, amount]) => {
-      grid.appendChild(buildMissingItem(name, amount, `Estimated return: x${formatEstimatedAmount(amount)}`));
+    savingsList.forEach(([name, entry]) => {
+      grid.appendChild(
+        buildMissingItem(name, entry.amount, `Estimated return: x${formatEstimatedAmount(entry.amount)} in ${entry.city}`)
+      );
     });
     savingsSection.appendChild(grid);
     wrapper.appendChild(savingsSection);
