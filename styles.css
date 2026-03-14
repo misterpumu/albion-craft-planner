@@ -154,7 +154,8 @@ h1 {
 .card__header,
 .filters,
 .data-source,
-.plan-card__top {
+.plan-card__top,
+.market-controls {
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -411,6 +412,22 @@ textarea {
   align-items: center;
 }
 
+.market-controls {
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.market-controls label {
+  display: grid;
+  gap: 8px;
+  min-width: 132px;
+}
+
+.market-controls span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .primary-button--compact {
   width: auto;
   margin-top: 0;
@@ -665,6 +682,7 @@ textarea {
   .data-source,
   .plan-card__top,
   .target-builder__controls,
+  .market-controls,
   .plan-card__summary-side {
     flex-direction: column;
     align-items: stretch;
