@@ -1,14 +1,8 @@
 const storageKey = "albion-crafteo-inventory-v3";
-const marketSettingsKey = "albion-crafteo-market-v1";
 const ALL_CATEGORIES = "__ALL__";
 const MATERIAL_NAME_ALIASES = {
   "Baroque Cloth": "Exquisite Cloth",
   "Cured Leather": "Worked Leather"
-};
-const MARKET_BASE_URLS = {
-  europe: "https://europe.albion-online-data.com/api/v2/stats/prices",
-  west: "https://west.albion-online-data.com/api/v2/stats/prices",
-  east: "https://east.albion-online-data.com/api/v2/stats/prices"
 };
 
 const RESOURCE_LINES = [
@@ -54,7 +48,6 @@ const QUICK_ITEMS = RESOURCE_LINES.flatMap((line) =>
 );
 
 const inventory = loadInventory();
-const marketSettings = loadMarketSettings();
 let recipes = [];
 let categoryOptions = [ALL_CATEGORIES];
 let itemIconMap = new Map();
@@ -74,7 +67,6 @@ let selectedTargetName = "";
 let plannerWorker = null;
 let workerRequestCounter = 0;
 const workerRequests = new Map();
-const marketPriceCache = new Map();
 
 const inventoryList = document.querySelector("#inventory-list");
 const materialPickerSearch = document.querySelector("#material-picker-search");
@@ -94,9 +86,6 @@ const statusText = document.querySelector("#status-text");
 const statusSpinner = document.querySelector("#status-spinner");
 const reloadDataButton = document.querySelector("#reload-data-button");
 const analyzeButton = document.querySelector("#analyze-button");
-const marketServerSelect = document.querySelector("#market-server");
-const marketCitySelect = document.querySelector("#market-city");
-const rankingModeSelect = document.querySelector("#ranking-mode");
 const bestPlan = document.querySelector("#best-plan");
 const planList = document.querySelector("#plan-list");
 const bestTier = document.querySelector("#best-tier");
@@ -121,9 +110,6 @@ function bindEvents() {
   targetPickerResults.addEventListener("click", handleTargetPickerSelect);
   searchInput.addEventListener("input", () => renderPlanner(false));
   categoryFilter.addEventListener("change", () => renderPlanner(false));
-  marketServerSelect.addEventListener("change", handleMarketSettingsChange);
-  marketCitySelect.addEventListener("change", handleMarketSettingsChange);
-  rankingModeSelect.addEventListener("change", handleMarketSettingsChange);
   analyzeButton.addEventListener("click", () => {
     if (plannerRunning) return;
     plannerDirty = false;
@@ -247,7 +233,6 @@ function loadCatalog() {
     : "";
 
   recipes = buildPlannerRecipes(localCatalog.recipes);
-  applyMarketSettingsToControls();
   ensureMaterials(collectAllTrackableNames(recipes));
   itemIconMap = buildItemIconMap(recipes);
   recipeIndex = buildRecipeIndex(recipes);
@@ -272,15 +257,6 @@ function loadCatalog() {
   setStatus(
     `Exact local catalog loaded (${localCatalog.recipes.length} exact recipes${generatedAt ? `, generated ${generatedAt}` : ""}).`
   );
-}
-
-function handleMarketSettingsChange() {
-  marketSettings.server = marketServerSelect.value;
-  marketSettings.city = marketCitySelect.value;
-  marketSettings.rankingMode = rankingModeSelect.value;
-  saveMarketSettings();
-  plannerInventoryKey = "";
-  markPlannerDirty();
 }
 
 function buildPlannerRecipes(catalogRecipes) {
@@ -638,7 +614,6 @@ async function renderPlanner(forceCompute = false) {
     const inventoryKey = buildInventoryKey(inventory);
     if (plannerInventoryKey !== inventoryKey) {
       plannerCache = await analyzeInventoryWithWorker(inventory, inventoryKey);
-      await enrichPlansWithMarketPrices(plannerCache);
       plannerInventoryKey = inventoryKey;
     }
     plannerDirty = false;
@@ -802,10 +777,6 @@ function buildPlanNode(plan) {
     notes.hidden = false;
   }
 
-  if (plan.marketSummary) {
-    notes.textContent = plan.marketSummary;
-  }
-
   hydrateIcon(avatar, plan.recipe.outputName, plan.recipe.outputId);
   return node;
 }
@@ -860,7 +831,6 @@ async function renderTargetPlan(targetName, desiredAmount) {
       emptyResourceText: analysis.emptyResourceText
     }
   };
-  await enrichTargetAnalysisWithMarketPrices(targetPlanData, analysis);
   const node = buildPlanNode(targetPlanData);
 
   targetPlan.innerHTML = "";
@@ -1540,33 +1510,6 @@ function updateTrackedCount() {
   trackedCount.textContent = `${Object.values(inventory).filter((amount) => amount > 0).length} materials`;
 }
 
-function loadMarketSettings() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(marketSettingsKey) || "{}");
-    return {
-      server: parsed.server || "europe",
-      city: parsed.city || "Caerleon",
-      rankingMode: parsed.rankingMode || "profit"
-    };
-  } catch {
-    return {
-      server: "europe",
-      city: "Caerleon",
-      rankingMode: "profit"
-    };
-  }
-}
-
-function saveMarketSettings() {
-  localStorage.setItem(marketSettingsKey, JSON.stringify(marketSettings));
-}
-
-function applyMarketSettingsToControls() {
-  marketServerSelect.value = marketSettings.server;
-  marketCitySelect.value = marketSettings.city;
-  rankingModeSelect.value = marketSettings.rankingMode;
-}
-
 function updateInventoryCard(material) {
   const input = inventoryList.querySelector(`input[data-material="${material.replace(/"/g, '\\"')}"]`);
   if (!input) return;
@@ -1625,152 +1568,6 @@ function setTargetPlannerRunning(running) {
   analyzeTargetButton.disabled = running || !selectedTargetName;
   analyzeTargetButton.classList.toggle("is-busy", running);
   analyzeTargetButton.textContent = running ? "Analyzing..." : "Analyze Target";
-}
-
-async function enrichPlansWithMarketPrices(plans) {
-  if (!plans.length) return;
-
-  const ids = new Set();
-  plans.forEach((plan) => {
-    const outputId = plan.recipe.outputId || itemIconMap.get(plan.recipe.outputName);
-    if (outputId) ids.add(outputId);
-    Object.keys(plan.consumed || {}).forEach((name) => {
-      const id = itemIconMap.get(name);
-      if (id) ids.add(id);
-    });
-  });
-
-  const priceMap = await fetchMarketPrices(Array.from(ids));
-  plans.forEach((plan) => {
-    applyMarketDataToPlan(plan, priceMap);
-  });
-
-  plans.sort((left, right) => comparePlans(left, right));
-}
-
-async function enrichTargetAnalysisWithMarketPrices(plan, analysis) {
-  const ids = new Set();
-  const outputId = analysis.recipe.outputId || itemIconMap.get(analysis.recipe.outputName);
-  if (outputId) ids.add(outputId);
-  analysis.resourceList.forEach(([name]) => {
-    const id = itemIconMap.get(name);
-    if (id) ids.add(id);
-  });
-
-  const priceMap = await fetchMarketPrices(Array.from(ids));
-  const outputPrice = getBestPrice(priceMap.get(outputId));
-  const missingCost = analysis.resourceList.reduce((sum, [name, amount]) => {
-    const entry = priceMap.get(itemIconMap.get(name));
-    return sum + getBestPrice(entry) * amount;
-  }, 0);
-
-  if (outputPrice > 0 || missingCost > 0) {
-    plan.marketSummary = `Market in ${marketSettings.city} (${capitalize(marketSettings.server)}): target value ${formatSilver(outputPrice * analysis.outputCount)}, missing materials ${formatSilver(missingCost)}.`;
-  }
-}
-
-async function fetchMarketPrices(itemIds) {
-  const cleanIds = itemIds.filter(Boolean);
-  const uncachedIds = cleanIds.filter((id) => !marketPriceCache.has(buildMarketCacheKey(id)));
-  if (uncachedIds.length) {
-    const batches = chunkArray(uncachedIds, 80);
-    for (const batch of batches) {
-      const endpoint = `${MARKET_BASE_URLS[marketSettings.server]}/${batch.join(",")}?locations=${encodeURIComponent(marketSettings.city)}&qualities=1`;
-      try {
-        const response = await fetch(endpoint);
-        if (!response.ok) continue;
-        const json = await response.json();
-        const grouped = new Map();
-        json.forEach((entry) => {
-          const key = buildMarketCacheKey(entry.item_id);
-          marketPriceCache.set(key, entry);
-          grouped.set(entry.item_id, entry);
-        });
-        batch.forEach((id) => {
-          if (!grouped.has(id)) {
-            marketPriceCache.set(buildMarketCacheKey(id), null);
-          }
-        });
-      } catch {
-        batch.forEach((id) => {
-          if (!marketPriceCache.has(buildMarketCacheKey(id))) {
-            marketPriceCache.set(buildMarketCacheKey(id), null);
-          }
-        });
-      }
-    }
-  }
-
-  return new Map(cleanIds.map((id) => [id, marketPriceCache.get(buildMarketCacheKey(id)) || null]));
-}
-
-function buildMarketCacheKey(itemId) {
-  return `${marketSettings.server}|${marketSettings.city}|${itemId}`;
-}
-
-function applyMarketDataToPlan(plan, priceMap) {
-  const outputId = plan.recipe.outputId || itemIconMap.get(plan.recipe.outputName);
-  const outputEntry = outputId ? priceMap.get(outputId) : null;
-  const outputValue = getBestPrice(outputEntry) * plan.outputCount;
-  const inputCost = Object.entries(plan.consumed || {}).reduce((sum, [name, amount]) => {
-    const id = itemIconMap.get(name);
-    const entry = id ? priceMap.get(id) : null;
-    return sum + getBestPrice(entry) * amount;
-  }, 0);
-
-  plan.marketValue = outputValue;
-  plan.materialCost = inputCost;
-  plan.estimatedProfit = outputValue - inputCost;
-
-  if (outputValue > 0 || inputCost > 0) {
-    plan.marketSummary = `Market in ${marketSettings.city} (${capitalize(marketSettings.server)}): value ${formatSilver(outputValue)}, materials ${formatSilver(inputCost)}, estimated profit ${formatSilver(plan.estimatedProfit)}.`;
-  } else {
-    plan.marketSummary = `Market data unavailable for ${marketSettings.city} on ${capitalize(marketSettings.server)}.`;
-  }
-
-  plan.metaText = plan.marketSummary;
-
-  if (marketSettings.rankingMode === "profit") {
-    plan.badgeText = `${plan.badgeText || `x${plan.outputCount} | ${plan.steps.length} steps`} | ${formatShortSilver(plan.estimatedProfit)}`;
-  }
-}
-
-function comparePlans(left, right) {
-  if (marketSettings.rankingMode === "profit") {
-    const profitDiff = (right.estimatedProfit || 0) - (left.estimatedProfit || 0);
-    if (profitDiff !== 0) return profitDiff;
-  }
-
-  const scoreDiff = scoreRecipe(right.recipe) - scoreRecipe(left.recipe);
-  if (scoreDiff !== 0) return scoreDiff;
-  if (right.outputCount !== left.outputCount) return right.outputCount - left.outputCount;
-  return left.steps.length - right.steps.length;
-}
-
-function getBestPrice(entry) {
-  if (!entry) return 0;
-  return Number(entry.sell_price_min || entry.buy_price_max || 0);
-}
-
-function formatSilver(value) {
-  return `${Math.round(value).toLocaleString("en-US")} silver`;
-}
-
-function formatShortSilver(value) {
-  const rounded = Math.round(value || 0);
-  return `${rounded >= 0 ? "+" : ""}${rounded.toLocaleString("en-US")}`;
-}
-
-function chunkArray(list, size) {
-  const chunks = [];
-  for (let index = 0; index < list.length; index += size) {
-    chunks.push(list.slice(index, index + size));
-  }
-  return chunks;
-}
-
-function capitalize(value) {
-  return value ? value.charAt(0).toUpperCase() + value.slice(1) : "";
 }
 
 function initializePlannerWorker(recipeList) {
