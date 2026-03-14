@@ -1,9 +1,18 @@
 const storageKey = "albion-crafteo-inventory-v3";
+const refiningSettingsKey = "albion-crafteo-refining-v1";
 const ALL_CATEGORIES = "__ALL__";
 const MATERIAL_NAME_ALIASES = {
   "Baroque Cloth": "Exquisite Cloth",
   "Cured Leather": "Worked Leather"
 };
+const REFINING_CITY_BONUSES = {
+  Martlock: "Cuero",
+  Bridgewatch: "Stone",
+  Lymhurst: "Fibra",
+  "Fort Sterling": "Madera",
+  Thetford: "Metal"
+};
+const REFINING_CITY_RETURN_RATE = 0.4;
 
 const RESOURCE_LINES = [
   {
@@ -48,6 +57,7 @@ const QUICK_ITEMS = RESOURCE_LINES.flatMap((line) =>
 );
 
 const inventory = loadInventory();
+const refiningSettings = loadRefiningSettings();
 let recipes = [];
 let categoryOptions = [ALL_CATEGORIES];
 let itemIconMap = new Map();
@@ -86,6 +96,7 @@ const statusText = document.querySelector("#status-text");
 const statusSpinner = document.querySelector("#status-spinner");
 const reloadDataButton = document.querySelector("#reload-data-button");
 const analyzeButton = document.querySelector("#analyze-button");
+const refiningCitySelect = document.querySelector("#refining-city");
 const bestPlan = document.querySelector("#best-plan");
 const planList = document.querySelector("#plan-list");
 const bestTier = document.querySelector("#best-tier");
@@ -110,6 +121,7 @@ function bindEvents() {
   targetPickerResults.addEventListener("click", handleTargetPickerSelect);
   searchInput.addEventListener("input", () => renderPlanner(false));
   categoryFilter.addEventListener("change", () => renderPlanner(false));
+  refiningCitySelect.addEventListener("change", handleRefiningCityChange);
   analyzeButton.addEventListener("click", () => {
     if (plannerRunning) return;
     plannerDirty = false;
@@ -233,6 +245,7 @@ function loadCatalog() {
     : "";
 
   recipes = buildPlannerRecipes(localCatalog.recipes);
+  applyRefiningSettingsToControls();
   ensureMaterials(collectAllTrackableNames(recipes));
   itemIconMap = buildItemIconMap(recipes);
   recipeIndex = buildRecipeIndex(recipes);
@@ -257,6 +270,13 @@ function loadCatalog() {
   setStatus(
     `Exact local catalog loaded (${localCatalog.recipes.length} exact recipes${generatedAt ? `, generated ${generatedAt}` : ""}).`
   );
+}
+
+function handleRefiningCityChange() {
+  refiningSettings.city = refiningCitySelect.value;
+  saveRefiningSettings();
+  plannerInventoryKey = "";
+  markPlannerDirty();
 }
 
 function buildPlannerRecipes(catalogRecipes) {
@@ -1290,8 +1310,29 @@ function loadInventory() {
   }
 }
 
+function loadRefiningSettings() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(refiningSettingsKey) || "{}");
+    return {
+      city: parsed.city || "None"
+    };
+  } catch {
+    return {
+      city: "None"
+    };
+  }
+}
+
 function saveInventory() {
   localStorage.setItem(storageKey, JSON.stringify(inventory));
+}
+
+function saveRefiningSettings() {
+  localStorage.setItem(refiningSettingsKey, JSON.stringify(refiningSettings));
+}
+
+function applyRefiningSettingsToControls() {
+  refiningCitySelect.value = refiningSettings.city;
 }
 
 function parseTier(tierString) {
@@ -1329,6 +1370,44 @@ function hydrateIcon(container, name, iconId = itemIconMap.get(name)) {
   };
 }
 
+function calculateRefiningSavings(stepEntries, selectedCity) {
+  if (!selectedCity || selectedCity === "None") return [];
+
+  const savings = {};
+  stepEntries.forEach((entry) => {
+    if (entry.recipe.plannerType !== "refine") return;
+    const bestCity = getBestRefiningCityForRecipe(entry.recipe);
+    if (bestCity !== selectedCity) return;
+
+    Object.entries(entry.recipe.ingredients).forEach(([name, amount]) => {
+      savings[name] = (savings[name] || 0) + amount * entry.runs * REFINING_CITY_RETURN_RATE;
+    });
+  });
+
+  return Object.entries(savings)
+    .filter(([, amount]) => amount > 0)
+    .sort((left, right) => left[0].localeCompare(right[0]));
+}
+
+function getBestRefiningCityForRecipe(recipe) {
+  const family = getRefiningFamilyForRecipe(recipe);
+  if (!family) return "";
+
+  return Object.entries(REFINING_CITY_BONUSES).find(([, bonusFamily]) => bonusFamily === family)?.[0] || "";
+}
+
+function getRefiningFamilyForRecipe(recipe) {
+  if (!recipe || recipe.plannerType !== "refine") return "";
+
+  const outputName = recipe.outputName || "";
+  const line = RESOURCE_LINES.find((entry) => entry.refinedNames.includes(outputName));
+  return line ? line.family : "";
+}
+
+function formatEstimatedAmount(value) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
 function getPrimaryRecipeForName(name) {
   return (recipeIndex.get(name) || []).find((recipe) => !recipe.enchanted) || null;
 }
@@ -1336,6 +1415,7 @@ function getPrimaryRecipeForName(name) {
 function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourceText) {
   const wrapper = document.createElement("section");
   wrapper.className = "target-plan-details";
+  const savingsList = calculateRefiningSavings(stepEntries, refiningSettings.city);
 
   const stepsSection = document.createElement("section");
   stepsSection.className = "target-plan-section";
@@ -1370,6 +1450,21 @@ function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourc
   }
 
   wrapper.appendChild(missingSection);
+
+  if (savingsList.length) {
+    const savingsSection = document.createElement("section");
+    savingsSection.className = "target-plan-section";
+    savingsSection.innerHTML = `<h3 class="target-plan-section__title">Estimated city bonus savings</h3>`;
+
+    const grid = document.createElement("div");
+    grid.className = "missing-grid";
+    savingsList.forEach(([name, amount]) => {
+      grid.appendChild(buildMissingItem(name, amount, `Estimated return: x${formatEstimatedAmount(amount)}`));
+    });
+    savingsSection.appendChild(grid);
+    wrapper.appendChild(savingsSection);
+  }
+
   return wrapper;
 }
 
@@ -1387,18 +1482,24 @@ function buildStepCard(entry) {
   node.querySelector(".step-card__meta").textContent = ingredientText
     ? `Use ${ingredientText}.`
     : "No ingredients listed.";
+  if (entry.recipe.plannerType === "refine") {
+    const bonusCity = getBestRefiningCityForRecipe(entry.recipe);
+    if (bonusCity) {
+      node.querySelector(".step-card__meta").textContent += ` Best refining city: ${bonusCity}.`;
+    }
+  }
   node.querySelector(".step-card__amount").textContent = `x${outputAmount}`;
 
   hydrateIcon(node.querySelector(".item-avatar"), entry.recipe.outputName, entry.recipe.outputId);
   return node;
 }
 
-function buildMissingItem(name, amount) {
+function buildMissingItem(name, amount, metaText = `Still needed: x${formatEstimatedAmount(amount)}`) {
   const template = document.querySelector("#missing-item-template");
   const node = template.content.firstElementChild.cloneNode(true);
 
   node.querySelector(".missing-item__name").textContent = name;
-  node.querySelector(".missing-item__meta").textContent = `Still needed: x${amount}`;
+  node.querySelector(".missing-item__meta").textContent = metaText;
   hydrateIcon(node.querySelector(".item-avatar"), name);
   return node;
 }

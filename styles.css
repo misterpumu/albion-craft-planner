@@ -411,6 +411,21 @@ textarea {
   align-items: center;
 }
 
+.market-controls {
+  align-items: end;
+}
+
+.market-controls label {
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.market-controls span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .primary-button--compact {
   width: auto;
   margin-top: 0;
