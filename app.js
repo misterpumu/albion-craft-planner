@@ -798,7 +798,8 @@ function ensurePlanDetailsRendered(node, plan) {
       plan.detailData.stepEntries,
       plan.detailData.resourceList,
       plan.detailData.resourceTitle,
-      plan.detailData.emptyResourceText
+      plan.detailData.emptyResourceText,
+      plan.detailData.consumed
     )
   );
 }
@@ -836,7 +837,8 @@ async function renderTargetPlan(targetName, desiredAmount) {
       stepEntries: analysis.stepEntries,
       resourceList: analysis.resourceList,
       resourceTitle: analysis.resourceTitle,
-      emptyResourceText: analysis.emptyResourceText
+      emptyResourceText: analysis.emptyResourceText,
+      consumed: analysis.consumed
     }
   };
   const node = buildPlanNode(targetPlanData);
@@ -866,7 +868,8 @@ function buildReachablePlans(sourceInventory) {
         stepEntries: aggregateStepObjects(result.steps),
         resourceList: toNamedAmountList(consumed),
         resourceTitle: "Consumed materials",
-        emptyResourceText: "This route uses the materials already present in your inventory."
+        emptyResourceText: "This route uses the materials already present in your inventory.",
+        consumed
       }
     });
 
@@ -888,7 +891,8 @@ function buildReachablePlans(sourceInventory) {
           stepEntries: aggregateStepObjects(result.steps),
           resourceList: toNamedAmountList(consumed),
           resourceTitle: "Consumed materials",
-          emptyResourceText: "This route uses the materials already present in your inventory."
+          emptyResourceText: "This route uses the materials already present in your inventory.",
+          consumed
         }
       });
     }
@@ -1380,11 +1384,11 @@ function getPrimaryRecipeForName(name) {
   return (recipeIndex.get(name) || []).find((recipe) => !recipe.enchanted) || null;
 }
 
-function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourceText) {
+function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourceText, consumedMap = {}) {
   const wrapper = document.createElement("section");
   wrapper.className = "target-plan-details";
   const savingsList = calculateRefiningSavings(stepEntries);
-  const travelAdvice = buildTravelAdvice(stepEntries);
+  const travelAdvice = buildTravelAdvice(stepEntries, consumedMap);
 
   const stepsSection = document.createElement("section");
   stepsSection.className = "target-plan-section";
@@ -1489,8 +1493,9 @@ function buildMissingItem(name, amount, metaText = `Still needed: x${formatEstim
   return node;
 }
 
-function buildTravelAdvice(stepEntries) {
+function buildTravelAdvice(stepEntries, consumedMap = {}) {
   const grouped = [];
+  const spareInventory = subtractInventory(inventory, consumedMap);
 
   stepEntries.forEach((entry) => {
     const destination =
@@ -1520,6 +1525,7 @@ function buildTravelAdvice(stepEntries) {
     const outputName = group.refineOutputs[0] || group.craftOutputs[0] || group.destination;
     const outputId = itemIconMap.get(outputName) || "";
     const tasks = [];
+    const extraRefines = collectExtraRefiningSuggestions(group.destination, spareInventory);
 
     if (group.refineOutputs.length) {
       tasks.push(`refine ${group.refineOutputs.join(", ")}`);
@@ -1533,9 +1539,45 @@ function buildTravelAdvice(stepEntries) {
       type: group.refineOutputs.length && !group.craftOutputs.length ? "refine" : "craft",
       outputName,
       outputId,
-      message: `Stop in ${group.destination} to ${tasks.join(" and ")}.`
+      message: buildTravelMessage(group.destination, tasks, extraRefines)
     };
   });
+}
+
+function buildTravelMessage(destination, tasks, extraRefines) {
+  const base = `Stop in ${destination} to ${tasks.join(" and ")}.`;
+  if (!extraRefines.length) return base;
+
+  return `${base} While you are there, you could also refine spare ${extraRefines.join(", ")}.`;
+}
+
+function collectExtraRefiningSuggestions(destination, spareInventory) {
+  const bonusFamily = REFINING_CITY_BONUSES[destination];
+  if (!bonusFamily) return [];
+
+  const line = RESOURCE_LINES.find((entry) => entry.family === bonusFamily);
+  if (!line) return [];
+
+  const candidates = [...line.rawNames, ...line.refinedNames]
+    .filter((name) => (spareInventory[name] || 0) > 0)
+    .sort((left, right) => left.localeCompare(right))
+    .slice(0, 3)
+    .map((name) => `${name} x${formatEstimatedAmount(spareInventory[name])}`);
+
+  return candidates;
+}
+
+function subtractInventory(source, consumedMap) {
+  const result = {};
+
+  Object.keys(source || {}).forEach((name) => {
+    const remaining = (source[name] || 0) - (consumedMap[name] || 0);
+    if (remaining > 0) {
+      result[name] = remaining;
+    }
+  });
+
+  return result;
 }
 
 function buildTravelCard(entry) {
