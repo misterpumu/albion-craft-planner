@@ -13,6 +13,16 @@ const REFINING_CITY_BONUSES = {
   Thetford: "Metal"
 };
 const REFINING_CITY_RETURN_RATE = 0.4;
+const CITY_GRAPH = {
+  Caerleon: ["Bridgewatch", "Fort Sterling", "Lymhurst", "Martlock", "Thetford", "Brecilien"],
+  Bridgewatch: ["Caerleon", "Martlock", "Thetford"],
+  Martlock: ["Bridgewatch", "Caerleon", "Fort Sterling"],
+  "Fort Sterling": ["Martlock", "Caerleon", "Lymhurst"],
+  Lymhurst: ["Fort Sterling", "Caerleon", "Thetford"],
+  Thetford: ["Lymhurst", "Caerleon", "Bridgewatch"],
+  Brecilien: ["Caerleon"]
+};
+const KNOWN_CITIES = new Set(Object.keys(CITY_GRAPH));
 
 const RESOURCE_LINES = [
   {
@@ -1527,71 +1537,146 @@ function buildMissingItem(name, amount, metaText = `Still needed: x${formatEstim
 }
 
 function buildTravelAdvice(stepEntries, consumedMap = {}) {
-  const grouped = [];
+  const grouped = new Map();
   const spareInventory = subtractInventory(inventory, consumedMap);
+  let currentCity = routeSettings.startingCity || "Caerleon";
 
   stepEntries.forEach((entry) => {
-    const destination =
-      entry.recipe.plannerType === "refine"
-        ? getBestRefiningCityForRecipe(entry.recipe)
-        : entry.recipe.craftedAt || "";
+    const destination = entry.recipe.plannerType === "refine" ? getBestRefiningCityForRecipe(entry.recipe) : currentCity;
+    if (entry.recipe.plannerType === "refine" && destination) {
+      currentCity = destination;
+    }
 
     if (!destination) return;
-
-    const currentGroup = grouped[grouped.length - 1];
-    if (!currentGroup || currentGroup.destination !== destination) {
-      grouped.push({
+    if (!grouped.has(destination)) {
+      grouped.set(destination, {
         destination,
         refineOutputs: [],
-        craftOutputs: []
+        craftOutputs: [],
+        craftStations: []
       });
     }
 
-    const activeGroup = grouped[grouped.length - 1];
-    const collection = entry.recipe.plannerType === "refine" ? activeGroup.refineOutputs : activeGroup.craftOutputs;
-    if (!collection.includes(entry.recipe.outputName)) {
-      collection.push(entry.recipe.outputName);
+    const activeGroup = grouped.get(destination);
+    if (entry.recipe.plannerType === "refine") {
+      if (!activeGroup.refineOutputs.includes(entry.recipe.outputName)) {
+        activeGroup.refineOutputs.push(entry.recipe.outputName);
+      }
+      return;
+    }
+
+    if (!activeGroup.craftOutputs.includes(entry.recipe.outputName)) {
+      activeGroup.craftOutputs.push(entry.recipe.outputName);
+    }
+    const stationName = entry.recipe.craftedAt || "Crafting station";
+    if (!activeGroup.craftStations.includes(stationName)) {
+      activeGroup.craftStations.push(stationName);
     }
   });
 
-  const orderedGroups = orderTravelGroups(grouped, routeSettings.startingCity);
+  const orderedGroups = orderTravelGroups(Array.from(grouped.values()), routeSettings.startingCity);
+  let previousCity = routeSettings.startingCity || "Caerleon";
 
   return orderedGroups.map((group, index) => {
     const outputName = group.refineOutputs[0] || group.craftOutputs[0] || group.destination;
     const outputId = itemIconMap.get(outputName) || "";
     const tasks = [];
     const extraRefines = collectExtraRefiningSuggestions(group.destination, spareInventory);
+    const travelPath = previousCity === group.destination ? [group.destination] : findShortestCityPath(previousCity, group.destination);
+    const travelHops = Math.max(0, travelPath.length - 1);
 
     if (group.refineOutputs.length) {
       tasks.push(`refine ${group.refineOutputs.join(", ")}`);
     }
     if (group.craftOutputs.length) {
-      tasks.push(`craft ${group.craftOutputs.join(", ")}`);
+      const stationText = group.craftStations.length ? ` at ${group.craftStations.join(" / ")}` : "";
+      tasks.push(`craft ${group.craftOutputs.join(", ")}${stationText}`);
     }
 
+    previousCity = group.destination;
     return {
       destination: group.destination,
-      type: group.refineOutputs.length && !group.craftOutputs.length ? "refine" : "craft",
       outputName,
       outputId,
-      message: buildTravelMessage(group.destination, tasks, extraRefines, index === 0)
+      eyebrow: buildTravelEyebrow(group.destination, travelPath, index === 0),
+      amountLabel: travelHops ? `${travelHops} hop${travelHops === 1 ? "" : "s"}` : "Here",
+      message: buildTravelMessage(group.destination, tasks, extraRefines, index === 0, travelPath)
     };
   });
 }
 
 function orderTravelGroups(groups, startingCity) {
   if (!groups.length) return groups;
-  const startIndex = groups.findIndex((group) => group.destination === startingCity);
-  if (startIndex <= 0) return groups;
+  const start = KNOWN_CITIES.has(startingCity) ? startingCity : "Caerleon";
+  const remaining = [...groups];
+  const ordered = [];
+  let current = start;
 
-  return [...groups.slice(startIndex), ...groups.slice(0, startIndex)];
+  while (remaining.length) {
+    let bestIndex = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    remaining.forEach((group, index) => {
+      const path = findShortestCityPath(current, group.destination);
+      const distance = path.length ? path.length - 1 : Number.POSITIVE_INFINITY;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    });
+
+    const [nextGroup] = remaining.splice(bestIndex, 1);
+    ordered.push(nextGroup);
+    current = nextGroup.destination;
+  }
+
+  return ordered;
 }
 
-function buildTravelMessage(destination, tasks, extraRefines, isFirstStop = false) {
-  const base = `${isFirstStop ? `Start in ${destination}` : `Then go to ${destination}`} to ${tasks.join(" and ")}.`;
+function buildTravelEyebrow(destination, travelPath, isFirstStop = false) {
+  if (isFirstStop) {
+    return `Start in ${destination}`;
+  }
+  if (travelPath.length > 1) {
+    return `Travel via ${travelPath.join(" -> ")}`;
+  }
+  return `Stay in ${destination}`;
+}
+
+function buildTravelMessage(destination, tasks, extraRefines, isFirstStop = false, travelPath = [destination]) {
+  const movementText =
+    travelPath.length > 1
+      ? `${isFirstStop ? "Travel out" : "Then move"} through ${travelPath.join(" -> ")}`
+      : `${isFirstStop ? `Start in ${destination}` : `Stay in ${destination}`}`;
+  const base = `${movementText} to ${tasks.join(" and ")}.`;
   if (!extraRefines.length) return base;
 
   return `${base} While you are there, you could also refine spare ${extraRefines.join(", ")}.`;
+}
+
+function findShortestCityPath(start, end) {
+  if (!KNOWN_CITIES.has(start) || !KNOWN_CITIES.has(end)) return end ? [end] : [];
+  if (start === end) return [start];
+
+  const queue = [[start]];
+  const visited = new Set([start]);
+
+  while (queue.length) {
+    const path = queue.shift();
+    const current = path[path.length - 1];
+
+    for (const neighbor of CITY_GRAPH[current] || []) {
+      if (visited.has(neighbor)) continue;
+      const nextPath = [...path, neighbor];
+      if (neighbor === end) {
+        return nextPath;
+      }
+      visited.add(neighbor);
+      queue.push(nextPath);
+    }
+  }
+
+  return [end];
 }
 
 function collectExtraRefiningSuggestions(destination, spareInventory) {
@@ -1627,11 +1712,10 @@ function buildTravelCard(entry) {
   const template = document.querySelector("#step-card-template");
   const node = template.content.firstElementChild.cloneNode(true);
 
-  node.querySelector(".step-card__eyebrow").textContent =
-    entry.type === "refine" ? `Travel to ${entry.destination}` : `Craft at ${entry.destination}`;
+  node.querySelector(".step-card__eyebrow").textContent = entry.eyebrow;
   node.querySelector(".step-card__name").textContent = entry.outputName;
   node.querySelector(".step-card__meta").textContent = entry.message;
-  node.querySelector(".step-card__amount").textContent = entry.destination;
+  node.querySelector(".step-card__amount").textContent = entry.amountLabel;
 
   hydrateIcon(node.querySelector(".item-avatar"), entry.outputName, entry.outputId);
   return node;
