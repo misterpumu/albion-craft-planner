@@ -1,4 +1,5 @@
 const storageKey = "albion-crafteo-inventory-v3";
+const routeSettingsKey = "albion-crafteo-route-v1";
 const ALL_CATEGORIES = "__ALL__";
 const MATERIAL_NAME_ALIASES = {
   "Baroque Cloth": "Exquisite Cloth",
@@ -56,6 +57,7 @@ const QUICK_ITEMS = RESOURCE_LINES.flatMap((line) =>
 );
 
 const inventory = loadInventory();
+const routeSettings = loadRouteSettings();
 let recipes = [];
 let categoryOptions = [ALL_CATEGORIES];
 let itemIconMap = new Map();
@@ -94,6 +96,7 @@ const statusText = document.querySelector("#status-text");
 const statusSpinner = document.querySelector("#status-spinner");
 const reloadDataButton = document.querySelector("#reload-data-button");
 const analyzeButton = document.querySelector("#analyze-button");
+const startingCitySelect = document.querySelector("#starting-city");
 const bestPlan = document.querySelector("#best-plan");
 const planList = document.querySelector("#plan-list");
 const bestTier = document.querySelector("#best-tier");
@@ -118,6 +121,7 @@ function bindEvents() {
   targetPickerResults.addEventListener("click", handleTargetPickerSelect);
   searchInput.addEventListener("input", () => renderPlanner(false));
   categoryFilter.addEventListener("change", () => renderPlanner(false));
+  startingCitySelect.addEventListener("change", handleStartingCityChange);
   analyzeButton.addEventListener("click", () => {
     if (plannerRunning) return;
     plannerDirty = false;
@@ -241,6 +245,7 @@ function loadCatalog() {
     : "";
 
   recipes = buildPlannerRecipes(localCatalog.recipes);
+  applyRouteSettingsToControls();
   ensureMaterials(collectAllTrackableNames(recipes));
   itemIconMap = buildItemIconMap(recipes);
   recipeIndex = buildRecipeIndex(recipes);
@@ -265,6 +270,13 @@ function loadCatalog() {
   setStatus(
     `Exact local catalog loaded (${localCatalog.recipes.length} exact recipes${generatedAt ? `, generated ${generatedAt}` : ""}).`
   );
+}
+
+function handleStartingCityChange() {
+  routeSettings.startingCity = startingCitySelect.value;
+  saveRouteSettings();
+  plannerInventoryKey = "";
+  markPlannerDirty();
 }
 
 function buildPlannerRecipes(catalogRecipes) {
@@ -1302,8 +1314,29 @@ function loadInventory() {
   }
 }
 
+function loadRouteSettings() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(routeSettingsKey) || "{}");
+    return {
+      startingCity: parsed.startingCity || "Caerleon"
+    };
+  } catch {
+    return {
+      startingCity: "Caerleon"
+    };
+  }
+}
+
 function saveInventory() {
   localStorage.setItem(storageKey, JSON.stringify(inventory));
+}
+
+function saveRouteSettings() {
+  localStorage.setItem(routeSettingsKey, JSON.stringify(routeSettings));
+}
+
+function applyRouteSettingsToControls() {
+  startingCitySelect.value = routeSettings.startingCity;
 }
 
 function parseTier(tierString) {
@@ -1521,7 +1554,9 @@ function buildTravelAdvice(stepEntries, consumedMap = {}) {
     }
   });
 
-  return grouped.map((group) => {
+  const orderedGroups = orderTravelGroups(grouped, routeSettings.startingCity);
+
+  return orderedGroups.map((group, index) => {
     const outputName = group.refineOutputs[0] || group.craftOutputs[0] || group.destination;
     const outputId = itemIconMap.get(outputName) || "";
     const tasks = [];
@@ -1539,13 +1574,21 @@ function buildTravelAdvice(stepEntries, consumedMap = {}) {
       type: group.refineOutputs.length && !group.craftOutputs.length ? "refine" : "craft",
       outputName,
       outputId,
-      message: buildTravelMessage(group.destination, tasks, extraRefines)
+      message: buildTravelMessage(group.destination, tasks, extraRefines, index === 0)
     };
   });
 }
 
-function buildTravelMessage(destination, tasks, extraRefines) {
-  const base = `Stop in ${destination} to ${tasks.join(" and ")}.`;
+function orderTravelGroups(groups, startingCity) {
+  if (!groups.length) return groups;
+  const startIndex = groups.findIndex((group) => group.destination === startingCity);
+  if (startIndex <= 0) return groups;
+
+  return [...groups.slice(startIndex), ...groups.slice(0, startIndex)];
+}
+
+function buildTravelMessage(destination, tasks, extraRefines, isFirstStop = false) {
+  const base = `${isFirstStop ? `Start in ${destination}` : `Then go to ${destination}`} to ${tasks.join(" and ")}.`;
   if (!extraRefines.length) return base;
 
   return `${base} While you are there, you could also refine spare ${extraRefines.join(", ")}.`;
