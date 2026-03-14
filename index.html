@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Albion Craft Planner</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hero">
+      <div class="hero__copy">
+        <p class="eyebrow">Albion Online</p>
+        <h1>I tell you what to refine and what to craft with what you have</h1>
+        <p class="hero__text">
+          Add your resources and the app will look for the best possible chain with a simple heuristic:
+          prioritize higher tier final items and use refining as an intermediate step.
+        </p>
+      </div>
+      <div class="hero__panel">
+        <div class="hero__stat">
+          <span id="best-tier">-</span>
+          <p>Best reachable tier</p>
+        </div>
+        <div class="hero__stat">
+          <span id="plan-steps-count">0</span>
+          <p>Best plan steps</p>
+        </div>
+        <div class="hero__stat hero__stat--small">
+          <span id="reachable-count">0</span>
+          <p>Reachable options</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <aside class="card inventory-card">
+        <div class="card__header">
+          <div>
+            <p class="section-label">Inventory</p>
+            <h2>Add only what you have</h2>
+          </div>
+          <button id="reset-button" class="ghost-button" type="button">Reset</button>
+        </div>
+
+        <p class="helper-text">
+          Search for a resource, choose the amount and add it. Below you will only see your current inventory, not the full catalog.
+        </p>
+
+        <section class="material-picker">
+          <label class="inventory-search">
+            <span>Search and add material</span>
+            <input id="material-picker-search" type="search" placeholder="Search and add materials with icons...">
+          </label>
+          <div id="material-picker-results" class="material-picker-results"></div>
+        </section>
+
+        <label class="bulk-input">
+          <span>Quick paste</span>
+          <textarea id="bulk-input" rows="5" placeholder="Example:&#10;Iron Ore=80&#10;Bronze Bar=40&#10;Pine Planks=24"></textarea>
+        </label>
+        <button id="apply-bulk-button" class="primary-button" type="button">Apply inventory</button>
+
+        <div class="card__header inventory-current-header">
+          <div>
+            <p class="section-label">Current</p>
+            <h2>Your inventory</h2>
+          </div>
+        </div>
+
+        <div id="inventory-list" class="inventory-list"></div>
+      </aside>
+
+      <section class="results-stack">
+        <section class="card">
+          <div class="card__header">
+            <div>
+              <p class="section-label">Plan</p>
+              <h2>Best recommended chain</h2>
+            </div>
+            <div class="inline-stats">
+              <span id="tracked-count">0 materials</span>
+            </div>
+          </div>
+
+          <div class="data-source">
+            <div class="status-box">
+              <span id="status-spinner" class="status-spinner" hidden aria-hidden="true"></span>
+              <p id="status-text">Loading exact catalog...</p>
+            </div>
+            <div class="data-actions">
+              <button id="analyze-button" class="primary-button primary-button--compact" type="button">Analyze Recipes</button>
+              <button id="reload-data-button" class="ghost-button" type="button">Reload page</button>
+            </div>
+          </div>
+
+          <div id="best-plan" class="plan-hero"></div>
+        </section>
+
+        <section class="card">
+          <div class="card__header">
+            <div>
+              <p class="section-label">Options</p>
+              <h2>Reachable alternatives</h2>
+            </div>
+          </div>
+
+          <div class="filters">
+            <label>
+              <span>Search target</span>
+              <input id="search-input" type="search" placeholder="Greataxe, bag, robe...">
+            </label>
+            <label>
+              <span>Category</span>
+              <select id="category-filter"></select>
+            </label>
+          </div>
+
+          <p class="helper-text">
+            Recommendations are calculated from the exact local catalog plus a base refining layer for metal, wood, fiber and leather.
+          </p>
+
+          <div id="plan-list" class="plan-list"></div>
+        </section>
+
+        <section class="card">
+          <div class="card__header">
+            <div>
+              <p class="section-label">Target</p>
+              <h2>Plan backwards from a desired item</h2>
+            </div>
+          </div>
+
+          <p class="helper-text">
+            Search for the item you want, choose how many units you need, and the app will tell you the steps plus the missing resources.
+          </p>
+
+          <section class="material-picker target-picker">
+            <label class="inventory-search">
+              <span>Search target item</span>
+              <input id="target-picker-search" type="search" placeholder="Great Fire Staff, bag, robe...">
+            </label>
+            <div id="target-picker-results" class="material-picker-results"></div>
+          </section>
+
+          <div class="target-builder">
+            <div id="selected-target" class="selected-target helper-text">No target selected yet.</div>
+            <div class="target-builder__controls">
+              <label>
+                <span>Desired amount</span>
+                <input id="target-amount-input" type="number" min="1" step="1" value="1">
+              </label>
+              <button id="analyze-target-button" class="primary-button primary-button--compact" type="button">Analyze Target</button>
+            </div>
+          </div>
+
+          <div id="target-plan" class="plan-hero"></div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <template id="inventory-item-template">
+    <label class="inventory-item">
+      <span class="inventory-item__name"></span>
+      <input class="inventory-item__input" type="number" min="0" step="1">
+    </label>
+  </template>
+
+  <template id="plan-template">
+    <details class="plan-card">
+      <summary class="plan-card__summary">
+        <div class="plan-card__top">
+          <div class="plan-card__identity">
+            <span class="item-avatar item-avatar--large">
+              <img class="item-avatar__img" alt="" loading="lazy">
+              <span class="item-avatar__fallback"></span>
+            </span>
+            <div>
+              <p class="plan-card__category"></p>
+              <h3 class="plan-card__name"></h3>
+            </div>
+          </div>
+          <div class="plan-card__summary-side">
+            <span class="plan-card__badge"></span>
+            <span class="plan-card__toggle">Show steps</span>
+          </div>
+        </div>
+      </summary>
+      <div class="plan-card__content">
+        <p class="plan-card__meta"></p>
+        <ol class="plan-card__steps"></ol>
+        <div class="plan-card__extra"></div>
+        <p class="plan-card__notes"></p>
+      </div>
+    </details>
+  </template>
+
+  <template id="material-picker-template">
+    <article class="picker-card">
+      <div class="picker-card__main">
+        <span class="item-avatar">
+          <img class="item-avatar__img" alt="" loading="lazy">
+          <span class="item-avatar__fallback"></span>
+        </span>
+        <div>
+          <h3 class="picker-card__name"></h3>
+          <p class="picker-card__meta"></p>
+        </div>
+      </div>
+      <div class="picker-card__controls">
+        <input class="picker-card__input" type="number" min="1" step="1" value="1">
+        <button class="ghost-button picker-card__button" type="button">Add</button>
+      </div>
+    </article>
+  </template>
+
+  <template id="inventory-current-template">
+    <article class="inventory-current-item">
+      <div class="inventory-current-item__main">
+        <span class="item-avatar">
+          <img class="item-avatar__img" alt="" loading="lazy">
+          <span class="item-avatar__fallback"></span>
+        </span>
+        <div>
+          <h3 class="inventory-current-item__name"></h3>
+          <p class="inventory-current-item__meta"></p>
+        </div>
+      </div>
+      <div class="inventory-current-item__controls">
+        <input class="inventory-current-item__input" type="number" min="0" step="1">
+        <button class="ghost-button inventory-current-item__remove" type="button">Remove</button>
+      </div>
+    </article>
+  </template>
+
+  <template id="step-card-template">
+    <article class="step-card">
+      <div class="step-card__main">
+        <span class="item-avatar">
+          <img class="item-avatar__img" alt="" loading="lazy">
+          <span class="item-avatar__fallback"></span>
+        </span>
+        <div>
+          <p class="step-card__eyebrow"></p>
+          <h3 class="step-card__name"></h3>
+          <p class="step-card__meta"></p>
+        </div>
+      </div>
+      <span class="step-card__amount"></span>
+    </article>
+  </template>
+
+  <template id="missing-item-template">
+    <article class="missing-item">
+      <span class="item-avatar">
+        <img class="item-avatar__img" alt="" loading="lazy">
+        <span class="item-avatar__fallback"></span>
+      </span>
+      <div>
+        <h3 class="missing-item__name"></h3>
+        <p class="missing-item__meta"></p>
+      </div>
+    </article>
+  </template>
+
+  <script src="catalog-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
