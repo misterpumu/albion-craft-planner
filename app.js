@@ -720,6 +720,7 @@ function renderBestPlan(plan) {
   const node = buildPlanNode(plan);
   node.open = true;
   bestPlan.appendChild(node);
+  ensurePlanDetailsRendered(node, plan);
 
   bestTier.textContent = `T${parseTier(plan.recipe.tier)}`;
   planStepsCount.textContent = String(plan.steps.length);
@@ -747,7 +748,6 @@ function buildPlanNode(plan) {
   const template = document.querySelector("#plan-template");
   const node = template.content.firstElementChild.cloneNode(true);
   const avatar = node.querySelector(".item-avatar");
-  const extra = node.querySelector(".plan-card__extra");
   const stepsList = node.querySelector(".plan-card__steps");
   const notes = node.querySelector(".plan-card__notes");
 
@@ -764,18 +764,35 @@ function buildPlanNode(plan) {
     plan.notesText || `Final source: ${plan.recipe.source}. Consumed materials: ${summarizeConsumed(plan.consumed)}.`;
   node.querySelector(".plan-card__toggle").textContent = "";
 
-  if (plan.extraContent instanceof Node) {
-    extra.replaceChildren(plan.extraContent.cloneNode(true));
+  if (plan.detailData) {
     stepsList.hidden = true;
     notes.hidden = true;
+    node.addEventListener("toggle", () => {
+      if (node.open) {
+        ensurePlanDetailsRendered(node, plan);
+      }
+    });
   } else {
-    extra.innerHTML = "";
     stepsList.hidden = false;
     notes.hidden = false;
   }
 
   hydrateIcon(avatar, plan.recipe.outputName, plan.recipe.outputId);
   return node;
+}
+
+function ensurePlanDetailsRendered(node, plan) {
+  const extra = node.querySelector(".plan-card__extra");
+  if (!extra || extra.childElementCount > 0 || !plan.detailData) return;
+
+  extra.replaceChildren(
+    buildPlanDetails(
+      plan.detailData.stepEntries,
+      plan.detailData.resourceList,
+      plan.detailData.resourceTitle,
+      plan.detailData.emptyResourceText
+    )
+  );
 }
 
 async function renderTargetPlan(targetName, desiredAmount) {
@@ -795,7 +812,7 @@ async function renderTargetPlan(targetName, desiredAmount) {
     return;
   }
 
-  const node = buildPlanNode({
+  const targetPlanData = {
     recipe: analysis.recipe,
     outputCount: analysis.outputCount,
     steps: analysis.stepEntries.map((entry) => describeStep(entry.recipe, entry.runs)),
@@ -807,17 +824,19 @@ async function renderTargetPlan(targetName, desiredAmount) {
     notesText: analysis.resourceList.length
       ? `Missing resources: ${analysis.resourceList.map(([name, amount]) => `${name} x${amount}`).join(", ")}.`
       : `No extra resources are missing. Consumed materials: ${summarizeConsumed(analysis.consumed)}.`,
-    extraContent: buildPlanDetails(
-      analysis.stepEntries,
-      analysis.resourceList,
-      analysis.resourceTitle,
-      analysis.emptyResourceText
-    )
-  });
+    detailData: {
+      stepEntries: analysis.stepEntries,
+      resourceList: analysis.resourceList,
+      resourceTitle: analysis.resourceTitle,
+      emptyResourceText: analysis.emptyResourceText
+    }
+  };
+  const node = buildPlanNode(targetPlanData);
 
   targetPlan.innerHTML = "";
   node.open = true;
   targetPlan.appendChild(node);
+  ensurePlanDetailsRendered(node, targetPlanData);
 }
 
 function buildReachablePlans(sourceInventory) {
@@ -835,12 +854,12 @@ function buildReachablePlans(sourceInventory) {
       outputCount: result.outputCount,
       steps: summarizeSteps(result.steps),
       consumed,
-      extraContent: buildPlanDetails(
-        aggregateStepObjects(result.steps),
-        toNamedAmountList(consumed),
-        "Consumed materials",
-        "This route uses the materials already present in your inventory."
-      )
+      detailData: {
+        stepEntries: aggregateStepObjects(result.steps),
+        resourceList: toNamedAmountList(consumed),
+        resourceTitle: "Consumed materials",
+        emptyResourceText: "This route uses the materials already present in your inventory."
+      }
     });
 
     if (plans.length >= 40) break;
@@ -857,12 +876,12 @@ function buildReachablePlans(sourceInventory) {
         outputCount: result.outputCount,
         steps: summarizeSteps(result.steps),
         consumed,
-        extraContent: buildPlanDetails(
-          aggregateStepObjects(result.steps),
-          toNamedAmountList(consumed),
-          "Consumed materials",
-          "This route uses the materials already present in your inventory."
-        )
+        detailData: {
+          stepEntries: aggregateStepObjects(result.steps),
+          resourceList: toNamedAmountList(consumed),
+          resourceTitle: "Consumed materials",
+          emptyResourceText: "This route uses the materials already present in your inventory."
+        }
       });
     }
   }
@@ -1610,7 +1629,12 @@ async function analyzeInventoryWithWorker(sourceInventory, inventoryKey) {
     outputCount: plan.outputCount,
     steps: plan.stepEntries.map((entry) => describeStep(entry.recipe, entry.runs)),
     consumed: plan.consumed,
-    extraContent: buildPlanDetails(plan.stepEntries, plan.resourceList, plan.resourceTitle, plan.emptyResourceText)
+    detailData: {
+      stepEntries: plan.stepEntries,
+      resourceList: plan.resourceList,
+      resourceTitle: plan.resourceTitle,
+      emptyResourceText: plan.emptyResourceText
+    }
   }));
 }
 
