@@ -1490,8 +1490,7 @@ function buildMissingItem(name, amount, metaText = `Still needed: x${formatEstim
 }
 
 function buildTravelAdvice(stepEntries) {
-  const advice = [];
-  const seen = new Set();
+  const grouped = [];
 
   stepEntries.forEach((entry) => {
     const destination =
@@ -1501,23 +1500,42 @@ function buildTravelAdvice(stepEntries) {
 
     if (!destination) return;
 
-    const key = `${entry.recipe.plannerType}:${destination}`;
-    if (seen.has(key)) return;
-    seen.add(key);
+    const currentGroup = grouped[grouped.length - 1];
+    if (!currentGroup || currentGroup.destination !== destination) {
+      grouped.push({
+        destination,
+        refineOutputs: [],
+        craftOutputs: []
+      });
+    }
 
-    advice.push({
-      destination,
-      type: entry.recipe.plannerType,
-      outputName: entry.recipe.outputName,
-      outputId: entry.recipe.outputId,
-      message:
-        entry.recipe.plannerType === "refine"
-          ? `While traveling, refine ${entry.recipe.outputName} in ${destination} for the best local bonus.`
-          : `Finish or continue crafting in ${destination} for ${entry.recipe.outputName}.`
-    });
+    const activeGroup = grouped[grouped.length - 1];
+    const collection = entry.recipe.plannerType === "refine" ? activeGroup.refineOutputs : activeGroup.craftOutputs;
+    if (!collection.includes(entry.recipe.outputName)) {
+      collection.push(entry.recipe.outputName);
+    }
   });
 
-  return advice;
+  return grouped.map((group) => {
+    const outputName = group.refineOutputs[0] || group.craftOutputs[0] || group.destination;
+    const outputId = itemIconMap.get(outputName) || "";
+    const tasks = [];
+
+    if (group.refineOutputs.length) {
+      tasks.push(`refine ${group.refineOutputs.join(", ")}`);
+    }
+    if (group.craftOutputs.length) {
+      tasks.push(`craft ${group.craftOutputs.join(", ")}`);
+    }
+
+    return {
+      destination: group.destination,
+      type: group.refineOutputs.length && !group.craftOutputs.length ? "refine" : "craft",
+      outputName,
+      outputId,
+      message: `Stop in ${group.destination} to ${tasks.join(" and ")}.`
+    };
+  });
 }
 
 function buildTravelCard(entry) {
