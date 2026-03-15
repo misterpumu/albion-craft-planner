@@ -444,11 +444,43 @@ textarea {
   align-items: center;
 }
 
+.ocr-controls {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+}
+
+.ocr-controls .planner-controls__field {
+  max-width: 180px;
+}
+
 .ocr-results {
   display: grid;
   gap: 10px;
   max-height: 240px;
   overflow: auto;
+}
+
+.screenshot-stage {
+  display: grid;
+  gap: 12px;
+}
+
+.screenshot-preview-shell {
+  min-height: 180px;
+  max-height: 420px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+}
+
+.screenshot-preview {
+  width: 100%;
+  height: auto;
+  cursor: crosshair;
+  border-radius: 12px;
 }
 
 .ocr-result {

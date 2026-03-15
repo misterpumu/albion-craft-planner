@@ -64,23 +64,35 @@
         <section class="ocr-panel">
           <div class="card__header inventory-current-header">
             <div>
-              <p class="section-label">OCR</p>
-              <h2>Import from screenshot</h2>
+              <p class="section-label">Screenshot</p>
+              <h2>Import from inventory screenshot</h2>
             </div>
           </div>
           <p class="helper-text">
-            Upload a screenshot and the app will try to detect materials locally in your browser. The image is not stored.
+            Upload a screenshot, click visible material slots, and the app will try to identify the icon plus read the quantity locally in your browser. The image is not stored.
           </p>
           <label class="bulk-input">
             <span>Screenshot file</span>
-            <input id="ocr-file-input" type="file" accept="image/*">
+            <input id="screenshot-file-input" type="file" accept="image/*">
           </label>
-          <div class="ocr-actions">
-            <button id="ocr-run-button" class="primary-button primary-button--compact" type="button">Scan Screenshot</button>
-            <button id="ocr-import-button" class="ghost-button" type="button" disabled>Import detected</button>
+          <div class="ocr-controls">
+            <label class="planner-controls__field">
+              <span>Slot size (px)</span>
+              <input id="screenshot-slot-size" type="number" min="48" max="180" step="2" value="84">
+            </label>
           </div>
-          <p id="ocr-status" class="helper-text">No screenshot scanned yet.</p>
-          <div id="ocr-results" class="ocr-results"></div>
+          <div class="ocr-actions">
+            <button id="screenshot-import-button" class="ghost-button" type="button" disabled>Import detected</button>
+            <button id="screenshot-clear-button" class="ghost-button" type="button">Clear screenshot</button>
+          </div>
+          <p id="screenshot-status" class="helper-text">Upload a screenshot, then click on each resource slot you want to detect.</p>
+          <div class="screenshot-stage">
+            <div id="screenshot-preview-shell" class="screenshot-preview-shell">
+              <img id="screenshot-preview" class="screenshot-preview" alt="" hidden>
+              <p id="screenshot-preview-empty" class="helper-text">No screenshot loaded yet.</p>
+            </div>
+          </div>
+          <div id="screenshot-results" class="ocr-results"></div>
         </section>
 
         <div class="card__header inventory-current-header">

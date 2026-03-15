@@ -173,8 +173,11 @@ let selectedTargetName = "";
 let plannerWorker = null;
 let workerRequestCounter = 0;
 const workerRequests = new Map();
-let detectedOcrMatches = [];
-let ocrRunning = false;
+let detectedScreenshotMatches = [];
+let screenshotObjectUrl = "";
+let screenshotRecognitionRunning = false;
+const iconDescriptorCache = new Map();
+let screenshotMaterialCandidates = [];
 
 const inventoryList = document.querySelector("#inventory-list");
 const materialPickerSearch = document.querySelector("#material-picker-search");
@@ -187,11 +190,15 @@ const analyzeTargetButton = document.querySelector("#analyze-target-button");
 const targetPlan = document.querySelector("#target-plan");
 const bulkInput = document.querySelector("#bulk-input");
 const applyBulkButton = document.querySelector("#apply-bulk-button");
-const ocrFileInput = document.querySelector("#ocr-file-input");
-const ocrRunButton = document.querySelector("#ocr-run-button");
-const ocrImportButton = document.querySelector("#ocr-import-button");
-const ocrStatus = document.querySelector("#ocr-status");
-const ocrResults = document.querySelector("#ocr-results");
+const screenshotFileInput = document.querySelector("#screenshot-file-input");
+const screenshotSlotSizeInput = document.querySelector("#screenshot-slot-size");
+const screenshotImportButton = document.querySelector("#screenshot-import-button");
+const screenshotClearButton = document.querySelector("#screenshot-clear-button");
+const screenshotStatus = document.querySelector("#screenshot-status");
+const screenshotPreviewShell = document.querySelector("#screenshot-preview-shell");
+const screenshotPreview = document.querySelector("#screenshot-preview");
+const screenshotPreviewEmpty = document.querySelector("#screenshot-preview-empty");
+const screenshotResults = document.querySelector("#screenshot-results");
 const resetButton = document.querySelector("#reset-button");
 const searchInput = document.querySelector("#search-input");
 const categoryFilter = document.querySelector("#category-filter");
@@ -270,8 +277,10 @@ function bindEvents() {
     markPlannerDirty();
   });
 
-  ocrRunButton.addEventListener("click", runScreenshotOcr);
-  ocrImportButton.addEventListener("click", importDetectedOcrMaterials);
+  screenshotFileInput.addEventListener("change", handleScreenshotSelection);
+  screenshotPreview.addEventListener("click", handleScreenshotPreviewClick);
+  screenshotImportButton.addEventListener("click", importDetectedScreenshotMaterials);
+  screenshotClearButton.addEventListener("click", clearScreenshotImport);
 
   resetButton.addEventListener("click", () => {
     Object.keys(inventory).forEach((name) => {
@@ -363,6 +372,9 @@ function loadCatalog() {
   initializePlannerWorker(recipes);
   searchableMaterials = collectSearchableMaterials(recipes);
   searchableTargets = collectSearchableTargets(recipes);
+  screenshotMaterialCandidates = searchableMaterials
+    .map((name) => ({ name, iconId: itemIconMap.get(name) }))
+    .filter((entry) => entry.iconId);
   categoryOptions = [ALL_CATEGORIES, ...new Set(recipes.filter(isFinalRecipe).map((recipe) => recipe.category))];
 
   renderInventory();
@@ -1369,191 +1381,230 @@ function collectSearchableTargets(recipeList) {
     .sort((left, right) => left.localeCompare(right));
 }
 
-async function runScreenshotOcr() {
-  if (ocrRunning) return;
-  const file = ocrFileInput.files?.[0];
+function handleScreenshotSelection() {
+  const file = screenshotFileInput.files?.[0];
+  clearScreenshotImport(false);
+
   if (!file) {
-    setOcrStatus("Choose a screenshot first.");
+    setScreenshotStatus("Upload a screenshot, then click on each resource slot you want to detect.");
     return;
   }
 
-  if (!window.Tesseract) {
-    setOcrStatus("OCR library not loaded. Reload the page and try again.");
-    return;
-  }
+  screenshotObjectUrl = URL.createObjectURL(file);
+  screenshotPreview.src = screenshotObjectUrl;
+  screenshotPreview.hidden = false;
+  screenshotPreviewEmpty.hidden = true;
+  setScreenshotStatus("Screenshot loaded. Click on a material slot to try to detect its icon and quantity.");
+}
 
-  ocrRunning = true;
-  ocrRunButton.disabled = true;
-  ocrImportButton.disabled = true;
-  detectedOcrMatches = [];
-  renderOcrResults();
-  setOcrStatus("Preparing screenshot for OCR...");
+async function handleScreenshotPreviewClick(event) {
+  if (screenshotRecognitionRunning) return;
+  if (!screenshotPreview.src) return;
+
+  screenshotRecognitionRunning = true;
+  screenshotImportButton.disabled = true;
 
   try {
-    const canvas = await buildOcrCanvas(file);
-    const result = await window.Tesseract.recognize(canvas, "eng", {
-      logger: (message) => {
-        if (message.status === "recognizing text") {
-          setOcrStatus(`Scanning screenshot... ${Math.round((message.progress || 0) * 100)}%`);
-        }
-      }
-    });
+    const { naturalX, naturalY } = mapScreenshotClick(event);
+    const slotSize = Math.max(48, Number(screenshotSlotSizeInput.value) || 84);
+    setScreenshotStatus("Analyzing clicked slot...");
+    const slotCanvas = await buildSlotCanvasFromPreview(naturalX, naturalY, slotSize);
+    const [match, amount] = await Promise.all([
+      matchSlotToMaterial(slotCanvas),
+      readSlotAmount(slotCanvas)
+    ]);
 
-    detectedOcrMatches = extractMaterialsFromOcr(result.data || {});
-    renderOcrResults();
-
-    if (detectedOcrMatches.length) {
-      setOcrStatus(`Detected ${detectedOcrMatches.length} material(s). Review and import if it looks right.`);
-      ocrImportButton.disabled = false;
-    } else {
-      setOcrStatus("No clear materials detected. Try a sharper crop focused on the inventory.");
+    if (!match) {
+      setScreenshotStatus("No confident icon match found for that slot. Try clicking closer to the center or adjust slot size.");
+      return;
     }
+
+    const previous = detectedScreenshotMatches.find((entry) => entry.name === match.name);
+    const nextEntry = {
+      name: match.name,
+      amount: amount || 1,
+      score: match.score
+    };
+
+    if (previous) {
+      previous.amount = Math.max(previous.amount, nextEntry.amount);
+      previous.score = Math.max(previous.score, nextEntry.score);
+    } else {
+      detectedScreenshotMatches.push(nextEntry);
+    }
+
+    detectedScreenshotMatches.sort((left, right) => right.amount - left.amount || left.name.localeCompare(right.name));
+    renderScreenshotResults();
+    screenshotImportButton.disabled = !detectedScreenshotMatches.length;
+    setScreenshotStatus(`Detected ${match.name}${amount ? ` x${amount}` : ""}. Click more slots or import the current list.`);
   } catch (error) {
-    setOcrStatus(`OCR failed: ${error instanceof Error ? error.message : String(error)}`);
+    setScreenshotStatus(`Screenshot scan failed: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
-    ocrRunning = false;
-    ocrRunButton.disabled = false;
+    screenshotRecognitionRunning = false;
   }
 }
 
-async function buildOcrCanvas(file) {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(2.2, 1800 / Math.max(1, bitmap.width));
+function mapScreenshotClick(event) {
+  const rect = screenshotPreview.getBoundingClientRect();
+  const offsetX = event.clientX - rect.left;
+  const offsetY = event.clientY - rect.top;
+  const ratioX = screenshotPreview.naturalWidth / Math.max(1, rect.width);
+  const ratioY = screenshotPreview.naturalHeight / Math.max(1, rect.height);
+
+  return {
+    naturalX: offsetX * ratioX,
+    naturalY: offsetY * ratioY
+  };
+}
+
+async function buildSlotCanvasFromPreview(centerX, centerY, slotSize) {
+  const bitmap = await createImageBitmap(await fetch(screenshotPreview.src).then((response) => response.blob()));
+  const cropSize = Math.max(48, slotSize);
+  const left = Math.max(0, Math.round(centerX - cropSize / 2));
+  const top = Math.max(0, Math.round(centerY - cropSize / 2));
+  const width = Math.min(cropSize, bitmap.width - left);
+  const height = Math.min(cropSize, bitmap.height - top);
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.width = width;
+  canvas.height = height;
 
   const context = canvas.getContext("2d", { willReadFrequently: true });
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-
-  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-
-  for (let index = 0; index < data.length; index += 4) {
-    const gray = Math.round(data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114);
-    const boosted = gray > 150 ? 255 : gray < 85 ? 0 : gray;
-    data[index] = boosted;
-    data[index + 1] = boosted;
-    data[index + 2] = boosted;
-  }
-
-  context.putImageData(imageData, 0, 0);
+  context.drawImage(bitmap, left, top, width, height, 0, 0, width, height);
   bitmap.close();
   return canvas;
 }
 
-function extractMaterialsFromOcr(ocrData) {
-  const rows = buildOcrRows(ocrData.words || []);
-  const matches = new Map();
-
-  rows.forEach((row, index) => {
-    const contexts = [
-      row.text,
-      `${row.text} ${(rows[index + 1]?.text || "").trim()}`.trim()
-    ].filter(Boolean);
-
-    contexts.forEach((context) => {
-      const material = findBestMaterialMatch(context);
-      const amount = extractBestOcrAmount(context);
-      if (!material || !amount) return;
-
-      const previous = matches.get(material.name);
-      if (!previous || amount > previous.amount) {
-        matches.set(material.name, {
-          name: material.name,
-          amount,
-          confidence: material.score,
-          sample: context
-        });
-      }
-    });
-  });
-
-  return [...matches.values()]
-    .sort((left, right) => right.amount - left.amount || left.name.localeCompare(right.name))
-    .slice(0, 24);
-}
-
-function buildOcrRows(words) {
-  const filtered = words
-    .filter((word) => word?.text && String(word.text).trim())
-    .map((word) => ({
-      text: String(word.text).trim(),
-      y: Math.round((((word.bbox?.y0 || 0) + (word.bbox?.y1 || 0)) / 2))
-    }))
-    .sort((left, right) => left.y - right.y);
-
-  const rows = [];
-  filtered.forEach((word) => {
-    const current = rows[rows.length - 1];
-    if (!current || Math.abs(current.y - word.y) > 18) {
-      rows.push({ y: word.y, words: [word.text] });
-      return;
-    }
-
-    current.words.push(word.text);
-  });
-
-  return rows.map((row) => ({ text: row.words.join(" ").trim() }));
-}
-
-function findBestMaterialMatch(text) {
-  const normalizedText = normalizeOcrText(text);
-  if (!normalizedText) return null;
-
+async function matchSlotToMaterial(slotCanvas) {
+  const slotDescriptor = buildImageDescriptor(extractIconArea(slotCanvas));
   let best = null;
 
-  searchableMaterials.forEach((name) => {
-    const normalizedName = normalizeOcrText(name);
-    if (!normalizedName || normalizedName.length < 4) return;
+  for (const candidate of screenshotMaterialCandidates) {
+    const iconDescriptor = await getIconDescriptor(candidate.iconId);
+    if (!iconDescriptor) continue;
 
-    let score = 0;
-    if (normalizedText.includes(normalizedName)) {
-      score = normalizedName.length + 20;
-    } else {
-      const textTokens = new Set(normalizedText.split(" ").filter(Boolean));
-      const nameTokens = normalizedName.split(" ").filter(Boolean);
-      const overlap = nameTokens.filter((token) => textTokens.has(token)).length;
-      score = overlap * 6 - Math.abs(nameTokens.length - textTokens.size);
-      if (overlap === nameTokens.length && overlap > 0) {
-        score += 12;
-      }
+    const score = compareImageDescriptors(slotDescriptor, iconDescriptor);
+    if (!best || score < best.score) {
+      best = { name: candidate.name, score };
+    }
+  }
+
+  return best && best.score < 38 ? best : null;
+}
+
+function extractIconArea(slotCanvas) {
+  const size = Math.min(slotCanvas.width, slotCanvas.height);
+  const iconSize = Math.round(size * 0.74);
+  const left = Math.round((slotCanvas.width - iconSize) / 2);
+  const top = Math.round(size * 0.06);
+  const canvas = document.createElement("canvas");
+  canvas.width = iconSize;
+  canvas.height = iconSize;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(slotCanvas, left, top, iconSize, iconSize, 0, 0, iconSize, iconSize);
+  return canvas;
+}
+
+async function getIconDescriptor(iconId) {
+  if (iconDescriptorCache.has(iconId)) {
+    return iconDescriptorCache.get(iconId);
+  }
+
+  try {
+    const response = await fetch(buildIconUrl(iconId), { mode: "cors" });
+    if (!response.ok) {
+      iconDescriptorCache.set(iconId, null);
+      return null;
     }
 
-    if (!best || score > best.score) {
-      best = { name, score };
-    }
+    const blob = await response.blob();
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close();
+
+    const descriptor = buildImageDescriptor(canvas);
+    iconDescriptorCache.set(iconId, descriptor);
+    return descriptor;
+  } catch {
+    iconDescriptorCache.set(iconId, null);
+    return null;
+  }
+}
+
+function buildImageDescriptor(sourceCanvas) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 20;
+  canvas.height = 20;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
+
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  const values = [];
+
+  for (let index = 0; index < data.length; index += 4) {
+    const alpha = data[index + 3] / 255;
+    const gray = (data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114) * alpha;
+    values.push(gray);
+  }
+
+  return values;
+}
+
+function compareImageDescriptors(left, right) {
+  if (!left || !right || left.length !== right.length) return Number.POSITIVE_INFINITY;
+
+  let diff = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    diff += Math.abs(left[index] - right[index]);
+  }
+
+  return diff / left.length;
+}
+
+async function readSlotAmount(slotCanvas) {
+  if (!window.Tesseract) return 1;
+
+  const cropWidth = Math.round(slotCanvas.width * 0.48);
+  const cropHeight = Math.round(slotCanvas.height * 0.34);
+  const cropX = slotCanvas.width - cropWidth;
+  const cropY = slotCanvas.height - cropHeight;
+  const canvas = document.createElement("canvas");
+  canvas.width = cropWidth;
+  canvas.height = cropHeight;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(slotCanvas, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+
+  const imageData = context.getImageData(0, 0, cropWidth, cropHeight);
+  const data = imageData.data;
+  for (let index = 0; index < data.length; index += 4) {
+    const gray = Math.round(data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114);
+    const value = gray > 140 ? 255 : 0;
+    data[index] = value;
+    data[index + 1] = value;
+    data[index + 2] = value;
+  }
+  context.putImageData(imageData, 0, 0);
+
+  const result = await window.Tesseract.recognize(canvas, "eng", {
+    tessedit_char_whitelist: "0123456789"
   });
-
-  return best && best.score >= 8 ? best : null;
+  const match = String(result.data?.text || "").match(/\d{1,5}/);
+  return match ? Math.max(1, Number(match[0])) : 1;
 }
 
-function normalizeOcrText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s']/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+function renderScreenshotResults() {
+  screenshotResults.innerHTML = "";
 
-function extractBestOcrAmount(text) {
-  const numbers = [...String(text || "").matchAll(/\b\d{1,5}\b/g)]
-    .map((entry) => Number(entry[0]))
-    .filter((value) => value > 0);
-
-  if (!numbers.length) return 0;
-  return Math.max(...numbers);
-}
-
-function renderOcrResults() {
-  ocrResults.innerHTML = "";
-
-  if (!detectedOcrMatches.length) {
-    ocrResults.innerHTML = `<p class="helper-text">No OCR matches ready yet.</p>`;
+  if (!detectedScreenshotMatches.length) {
+    screenshotResults.innerHTML = `<p class="helper-text">No screenshot matches ready yet.</p>`;
     return;
   }
 
-  detectedOcrMatches.forEach((entry) => {
+  detectedScreenshotMatches.forEach((entry) => {
     const node = document.createElement("article");
     node.className = "ocr-result";
     node.innerHTML = `
@@ -1571,17 +1622,17 @@ function renderOcrResults() {
     `;
 
     node.querySelector(".ocr-result__name").textContent = entry.name;
-    node.querySelector(".ocr-result__meta").textContent = `Detected from OCR sample: ${entry.sample}`;
+    node.querySelector(".ocr-result__meta").textContent = `Icon match score: ${entry.score.toFixed(1)}. Click more slots to add more materials.`;
     node.querySelector(".ocr-result__amount").textContent = `x${entry.amount}`;
     hydrateIcon(node.querySelector(".item-avatar"), entry.name);
-    ocrResults.appendChild(node);
+    screenshotResults.appendChild(node);
   });
 }
 
-function importDetectedOcrMaterials() {
-  if (!detectedOcrMatches.length) return;
+function importDetectedScreenshotMaterials() {
+  if (!detectedScreenshotMatches.length) return;
 
-  detectedOcrMatches.forEach((entry) => {
+  detectedScreenshotMatches.forEach((entry) => {
     inventory[entry.name] = Math.max(0, Number(entry.amount) || 0);
   });
 
@@ -1589,11 +1640,31 @@ function importDetectedOcrMaterials() {
   renderInventory();
   scheduleMaterialPickerRefresh(true);
   markPlannerDirty();
-  setOcrStatus(`Imported ${detectedOcrMatches.length} detected material(s) into your inventory.`);
+  setScreenshotStatus(`Imported ${detectedScreenshotMatches.length} detected material(s) into your inventory.`);
 }
 
-function setOcrStatus(message) {
-  ocrStatus.textContent = message;
+function clearScreenshotImport(resetInput = true) {
+  if (screenshotObjectUrl) {
+    URL.revokeObjectURL(screenshotObjectUrl);
+    screenshotObjectUrl = "";
+  }
+
+  detectedScreenshotMatches = [];
+  renderScreenshotResults();
+  screenshotPreview.hidden = true;
+  screenshotPreview.removeAttribute("src");
+  screenshotPreviewEmpty.hidden = false;
+  screenshotImportButton.disabled = true;
+
+  if (resetInput && screenshotFileInput) {
+    screenshotFileInput.value = "";
+  }
+
+  setScreenshotStatus("Upload a screenshot, then click on each resource slot you want to detect.");
+}
+
+function setScreenshotStatus(message) {
+  screenshotStatus.textContent = message;
 }
 
 function isSearchableTargetRecipe(recipe) {
