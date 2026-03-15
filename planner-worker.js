@@ -563,11 +563,15 @@ function cloneStep(step) {
 }
 
 function buildInventoryKey(stock) {
-  return Object.entries(stock)
-    .filter(([, amount]) => amount > 0)
-    .sort((left, right) => left[0].localeCompare(right[0]))
-    .map(([name, amount]) => `${name}:${amount}`)
-    .join("|");
+  let key = "";
+
+  for (const name of Object.keys(stock)) {
+    const amount = stock[name];
+    if (!(amount > 0)) continue;
+    key += `${name}:${amount}|`;
+  }
+
+  return key;
 }
 
 function getPrimaryRecipeForName(name) {
