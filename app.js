@@ -977,12 +977,17 @@ function renderMaterialPicker() {
   const template = document.querySelector("#material-picker-template");
   const search = materialPickerSearch.value.trim().toLowerCase();
   const names = searchableMaterials
-    .filter((name) => !search || name.toLowerCase().includes(search))
+    .filter((name) => {
+      if (!search) return true;
+      const english = name.toLowerCase();
+      const localized = displayName(name).toLowerCase();
+      return english.includes(search) || localized.includes(search);
+    })
     .sort((left, right) => {
-      const leftStarts = left.toLowerCase().startsWith(search) ? 1 : 0;
-      const rightStarts = right.toLowerCase().startsWith(search) ? 1 : 0;
+      const leftStarts = left.toLowerCase().startsWith(search) || displayName(left).toLowerCase().startsWith(search) ? 1 : 0;
+      const rightStarts = right.toLowerCase().startsWith(search) || displayName(right).toLowerCase().startsWith(search) ? 1 : 0;
       if (rightStarts !== leftStarts) return rightStarts - leftStarts;
-      return left.localeCompare(right);
+      return displayName(left).localeCompare(displayName(right));
     })
     .slice(0, search ? 24 : 12);
 
@@ -1049,12 +1054,17 @@ function renderTargetPicker() {
   const template = document.querySelector("#material-picker-template");
   const search = targetPickerSearch.value.trim().toLowerCase();
   const names = searchableTargets
-    .filter((name) => !search || name.toLowerCase().includes(search))
+    .filter((name) => {
+      if (!search) return true;
+      const english = name.toLowerCase();
+      const localized = displayName(name).toLowerCase();
+      return english.includes(search) || localized.includes(search);
+    })
     .sort((left, right) => {
-      const leftStarts = left.toLowerCase().startsWith(search) ? 1 : 0;
-      const rightStarts = right.toLowerCase().startsWith(search) ? 1 : 0;
+      const leftStarts = left.toLowerCase().startsWith(search) || displayName(left).toLowerCase().startsWith(search) ? 1 : 0;
+      const rightStarts = right.toLowerCase().startsWith(search) || displayName(right).toLowerCase().startsWith(search) ? 1 : 0;
       if (rightStarts !== leftStarts) return rightStarts - leftStarts;
-      return left.localeCompare(right);
+      return displayName(left).localeCompare(displayName(right));
     })
     .slice(0, search ? 18 : 8);
 
