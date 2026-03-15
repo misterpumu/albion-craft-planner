@@ -1915,16 +1915,20 @@ function buildTravelEyebrow(destination, travelPath, isFirstStop = false) {
     return `Start in ${destination}`;
   }
   if (travelPath.length > 1) {
-    return `Travel via ${travelPath.join(" -> ")}`;
+    const viaCities = travelPath.slice(1, -1);
+    if (viaCities.length) {
+      return `Go to ${destination} via ${viaCities.join(" -> ")}`;
+    }
+    return `Go to ${destination}`;
   }
   return `Stay in ${destination}`;
 }
 
 function buildTravelMessage(destination, tasks, extraRefines, isFirstStop = false, travelPath = [destination]) {
-  const movementText =
-    travelPath.length > 1
-      ? `${isFirstStop ? "Travel out" : "Then move"} through ${travelPath.join(" -> ")}`
-      : `${isFirstStop ? `Start in ${destination}` : `Stay in ${destination}`}`;
+  const viaCities = travelPath.slice(1, -1);
+  const movementText = travelPath.length > 1
+    ? `${isFirstStop ? `Leave ${travelPath[0]}` : "Then go"} to ${destination}${viaCities.length ? ` via ${viaCities.join(" -> ")}` : ""}`
+    : `${isFirstStop ? `Start in ${destination}` : `Stay in ${destination}`}`;
   const base = `${movementText} to ${tasks.join(" and ")}.`;
   if (!extraRefines.length) return base;
 
