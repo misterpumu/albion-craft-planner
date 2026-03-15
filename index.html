@@ -61,32 +61,6 @@
         </label>
         <button id="apply-bulk-button" class="primary-button" type="button">Apply inventory</button>
 
-        <section class="ocr-panel">
-          <div class="card__header inventory-current-header">
-            <div>
-              <p class="section-label">Live Scan</p>
-              <h2>Read tooltip names in real time</h2>
-            </div>
-          </div>
-          <p class="helper-text">
-            Share the Albion window, hover items so the game tooltip becomes visible, and the app will try to read detected material names live. Imported materials are added with amount 1 so you can adjust quantities manually.
-          </p>
-          <p class="helper-text">
-            If screen sharing does not open, use the direct GitHub Pages URL in Chrome or Edge, not an embedded iframe.
-          </p>
-          <div class="ocr-actions">
-            <button id="ocr-run-button" class="primary-button primary-button--compact" type="button">Start live scan</button>
-            <button id="ocr-stop-button" class="ghost-button" type="button" disabled>Stop scan</button>
-            <button id="ocr-import-button" class="ghost-button" type="button" disabled>Import detected</button>
-          </div>
-          <p id="ocr-status" class="helper-text">Live scan is idle.</p>
-          <div class="ocr-preview-shell">
-            <video id="ocr-preview" class="ocr-preview" autoplay muted playsinline hidden></video>
-            <p id="ocr-preview-empty" class="helper-text">No live window shared yet.</p>
-          </div>
-          <div id="ocr-results" class="ocr-results"></div>
-        </section>
-
         <div class="card__header inventory-current-header">
           <div>
             <p class="section-label">Current</p>
@@ -307,7 +281,6 @@
 
   <script src="catalog-data.js"></script>
   <script src="ingredient-icon-data.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
