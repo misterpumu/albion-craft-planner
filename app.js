@@ -2097,6 +2097,13 @@ function handleWorkerMessage(event) {
   const pending = workerRequests.get(requestId);
   if (!pending) return;
 
+  if (type.endsWith(":partial")) {
+    if (typeof pending.onPartial === "function") {
+      pending.onPartial(payload);
+    }
+    return;
+  }
+
   if (type.endsWith(":error")) {
     pending.reject(new Error(payload?.message || "Worker analysis failed."));
   } else {
@@ -2106,14 +2113,14 @@ function handleWorkerMessage(event) {
   workerRequests.delete(requestId);
 }
 
-function postWorkerRequest(type, payload) {
+function postWorkerRequest(type, payload, onPartial = null) {
   if (!plannerWorker) {
     return Promise.reject(new Error("Planner worker is not available."));
   }
 
   return new Promise((resolve, reject) => {
     const requestId = `${type}:${workerRequestCounter += 1}`;
-    workerRequests.set(requestId, { resolve, reject });
+    workerRequests.set(requestId, { resolve, reject, onPartial });
     plannerWorker.postMessage({ type, requestId, payload });
   });
 }
@@ -2123,11 +2130,26 @@ async function analyzeInventoryWithWorker(sourceInventory, inventoryKey) {
     return buildReachablePlans(sourceInventory);
   }
 
-  const plans = await postWorkerRequest("analyzeInventory", {
-    inventory: sourceInventory,
-    inventoryKey
-  });
+  const plans = await postWorkerRequest(
+    "analyzeInventory",
+    {
+      inventory: sourceInventory,
+      inventoryKey
+    },
+    (partialPlans) => {
+      if (buildInventoryKey(inventory) !== inventoryKey) return;
+      plannerCache = normalizeWorkerPlans(partialPlans);
+      plannerInventoryKey = inventoryKey;
+      plannerDirty = false;
+      setStatus(`Analyzing... first ${plannerCache.length} reachable option(s) ready.`);
+      renderPlanner(false);
+    }
+  );
 
+  return normalizeWorkerPlans(plans);
+}
+
+function normalizeWorkerPlans(plans) {
   return plans.map((plan) => ({
     recipe: plan.recipe,
     outputCount: plan.outputCount,

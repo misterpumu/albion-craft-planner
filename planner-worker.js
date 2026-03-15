@@ -19,7 +19,7 @@ self.onmessage = (event) => {
     }
 
     if (type === "analyzeInventory") {
-      const result = analyzeInventory(payload);
+      const result = analyzeInventory({ ...(payload || {}), requestId });
       self.postMessage({ type: "analyzeInventory:done", requestId, payload: result });
       return;
     }
@@ -75,6 +75,14 @@ function analyzeInventory(payload) {
       if (plans.length >= 40) break;
     }
 
+    if (plans.length) {
+      self.postMessage({
+        type: "analyzeInventory:partial",
+        requestId: payload?.requestId,
+        payload: sortSerializedPlans(plans)
+      });
+    }
+
     if (plans.length >= 12 || batchSize === CANDIDATE_BATCH_SIZES[CANDIDATE_BATCH_SIZES.length - 1]) {
       break;
     }
@@ -89,15 +97,19 @@ function analyzeInventory(payload) {
     }
   }
 
-  const sorted = plans.sort((left, right) => {
+  const sorted = sortSerializedPlans(plans);
+
+  inventoryAnalysisCache.set(cacheKey, sorted);
+  return sorted;
+}
+
+function sortSerializedPlans(plans) {
+  return [...plans].sort((left, right) => {
     const scoreDiff = scoreRecipe(right.recipe) - scoreRecipe(left.recipe);
     if (scoreDiff !== 0) return scoreDiff;
     if (right.outputCount !== left.outputCount) return right.outputCount - left.outputCount;
     return left.stepEntries.length - right.stepEntries.length;
   });
-
-  inventoryAnalysisCache.set(cacheKey, sorted);
-  return sorted;
 }
 
 function rankCandidatePool(candidatePool, inventory) {
