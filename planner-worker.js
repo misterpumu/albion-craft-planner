@@ -276,7 +276,7 @@ function satisfyNeed(itemName, count, stock, trail, depth, memo) {
 
   let best = null;
 
-  for (const producer of producers.slice(0, 4)) {
+  for (const producer of producers.slice(0, producerSearchLimit(itemName))) {
     const runs = Math.ceil(missing / producer.output);
     let currentStock = cloneStock(stock);
     let currentSteps = [];
@@ -393,7 +393,7 @@ function resolveNeedWithRequirements(itemName, count, stock, trail, depth, memo)
 
   let best = null;
 
-  for (const producer of producers.slice(0, 4)) {
+  for (const producer of producers.slice(0, producerSearchLimit(itemName))) {
     let candidateStock = cloneStock(stock);
     let candidateSteps = [];
     let candidateMissing = {};
@@ -501,6 +501,10 @@ function buildInventoryKey(stock) {
 
 function getPrimaryRecipeForName(name) {
   return (recipeIndex.get(name) || []).find((recipe) => !recipe.enchanted) || null;
+}
+
+function producerSearchLimit(itemName) {
+  return itemName === "Chopped Fish" ? 24 : 4;
 }
 
 function isFinalRecipe(recipe) {

@@ -370,27 +370,51 @@ function buildSupplementalRecipes(existingOutputs = new Set()) {
     { tier: 8, id: "T8_OFF_TORCH", name: "Elder's Torch", station: "Toolmaker", ingredients: { "Whitewood Planks": 8 } },
     { tier: 8, id: "T8_2H_AXE", name: "Elder's Greataxe", station: "Forge", ingredients: { "Whitewood Planks": 12, "Adamantium Steel Bar": 20 } },
     { tier: 8, id: "T8_2H_FIRESTAFF", name: "Elder's Great Fire Staff", station: "Arcane Forge", ingredients: { "Whitewood Planks": 20, "Adamantium Steel Bar": 12 } },
-    { tier: 8, id: "T8_OFF_BOOK", name: "Elder's Tome of Spells", station: "Arcane Forge", ingredients: { "Exquisite Cloth": 4, "Imbued Leather": 4 } }
+      { tier: 8, id: "T8_OFF_BOOK", name: "Elder's Tome of Spells", station: "Arcane Forge", ingredients: { "Exquisite Cloth": 4, "Imbued Leather": 4 } }
+    ];
+  const fishProcessingRecipes = [
+    { id: "T1_FISHCHOPS_RUDD", name: "Chopped Fish", category: "Consumibles", tier: 2, output: 1, station: "Cook", ingredients: { "Common Rudd": 1 } },
+    { id: "T1_FISHCHOPS_CARP", name: "Chopped Fish", category: "Consumibles", tier: 2, output: 2, station: "Cook", ingredients: { "Striped Carp": 1 } },
+    { id: "T1_FISHCHOPS_PERCH", name: "Chopped Fish", category: "Consumibles", tier: 3, output: 3, station: "Cook", ingredients: { "Albion Perch": 1 } },
+    { id: "T1_FISHCHOPS_PIKE", name: "Chopped Fish", category: "Consumibles", tier: 4, output: 4, station: "Cook", ingredients: { "Bluescale Pike": 1 } },
+    { id: "T1_FISHCHOPS_TROUT", name: "Chopped Fish", category: "Consumibles", tier: 5, output: 6, station: "Cook", ingredients: { "Spotted Trout": 1 } },
+    { id: "T1_FISHCHOPS_ZANDER", name: "Chopped Fish", category: "Consumibles", tier: 6, output: 8, station: "Cook", ingredients: { "Brightscale Zander": 1 } },
+    { id: "T1_FISHCHOPS_CATFISH", name: "Chopped Fish", category: "Consumibles", tier: 7, output: 10, station: "Cook", ingredients: { "Danglemouth Catfish": 1 } },
+    { id: "T1_FISHCHOPS_STURGEON", name: "Chopped Fish", category: "Consumibles", tier: 8, output: 14, station: "Cook", ingredients: { "River Sturgeon": 1 } },
+    { id: "T1_FISHCHOPS_HERRING", name: "Chopped Fish", category: "Consumibles", tier: 2, output: 1, station: "Cook", ingredients: { "Common Herring": 1 } },
+    { id: "T1_FISHCHOPS_MACKEREL", name: "Chopped Fish", category: "Consumibles", tier: 2, output: 2, station: "Cook", ingredients: { "Striped Mackerel": 1 } },
+    { id: "T1_FISHCHOPS_PLAICE", name: "Chopped Fish", category: "Consumibles", tier: 3, output: 3, station: "Cook", ingredients: { "Flatshore Plaice": 1 } },
+    { id: "T1_FISHCHOPS_COD", name: "Chopped Fish", category: "Consumibles", tier: 4, output: 4, station: "Cook", ingredients: { "Bluescale Cod": 1 } },
+    { id: "T1_FISHCHOPS_WOLFFISH", name: "Chopped Fish", category: "Consumibles", tier: 5, output: 6, station: "Cook", ingredients: { "Spotted Wolffish": 1 } },
+    { id: "T1_FISHCHOPS_SALMON", name: "Chopped Fish", category: "Consumibles", tier: 6, output: 8, station: "Cook", ingredients: { "Strongfin Salmon": 1 } },
+    { id: "T1_FISHCHOPS_TUNA", name: "Chopped Fish", category: "Consumibles", tier: 7, output: 10, station: "Cook", ingredients: { "Bluefin Tuna": 1 } },
+    { id: "T1_FISHCHOPS_SWORDFISH", name: "Chopped Fish", category: "Consumibles", tier: 8, output: 14, station: "Cook", ingredients: { "Steelscale Swordfish": 1 } },
+    { id: "T1_FISHSAUCE_LEVEL1", name: "Basic Fish Sauce", category: "Consumibles", tier: 3, output: 1, station: "Cook", ingredients: { "Chopped Fish": 15, Seaweed: 1 } },
+    { id: "T1_FISHSAUCE_LEVEL2", name: "Fancy Fish Sauce", category: "Consumibles", tier: 5, output: 1, station: "Cook", ingredients: { "Chopped Fish": 45, Seaweed: 3 } },
+    { id: "T1_FISHSAUCE_LEVEL3", name: "Special Fish Sauce", category: "Consumibles", tier: 7, output: 1, station: "Cook", ingredients: { "Chopped Fish": 135, Seaweed: 9 } },
+    { id: "T1_MEAL_FISH", name: "Grilled Fish", category: "Consumibles", tier: 2, output: 10, station: "Cook", ingredients: { "Chopped Fish": 10 } },
+    { id: "T1_MEAL_SALAD_FISHING", name: "Seaweed Salad", category: "Consumibles", tier: 2, output: 10, station: "Cook", ingredients: { Seaweed: 10 } }
   ];
+  const supplementalRecipes = [...standardAccessories, ...fishProcessingRecipes];
 
-  return standardAccessories
-    .filter((entry) => !existingOutputs.has(entry.name))
+  return supplementalRecipes
+    .filter((entry) => !existingOutputs.has(entry.name) || entry.name === "Chopped Fish")
     .map((entry) => ({
       id: `${entry.id}@0`,
       name: entry.name,
       outputName: entry.name,
       outputId: entry.id,
-      category: "Accesorios",
-      plannerCategory: "Accesorios",
+      category: entry.category || "Accesorios",
+      plannerCategory: entry.category || "Accesorios",
       plannerType: "craft",
       tier: `${entry.tier}.0`,
-      output: 1,
+      output: entry.output || 1,
       source: "Supplemental standard recipe",
       craftedAt: entry.station,
       ingredients: entry.ingredients,
       exact: false,
       enchanted: false,
-      priority: recipePriority("Accesorios")
+      priority: recipePriority(entry.category || "Accesorios")
     }));
 }
 
@@ -1110,7 +1134,7 @@ function satisfyNeed(itemName, count, stock, trail, depth) {
 
   let best = null;
 
-  for (const producer of producers.slice(0, 4)) {
+  for (const producer of producers.slice(0, producerSearchLimit(itemName))) {
     const runs = Math.ceil(missing / producer.output);
     let currentStock = cloneStock(stock);
     let currentSteps = [];
@@ -1168,7 +1192,7 @@ function resolveNeedWithRequirements(itemName, count, stock, trail, depth) {
 
   let best = null;
 
-  for (const producer of producers.slice(0, 4)) {
+  for (const producer of producers.slice(0, producerSearchLimit(itemName))) {
     let candidateStock = cloneStock(stock);
     let candidateSteps = [];
     let candidateMissing = {};
@@ -1492,6 +1516,10 @@ function formatEstimatedAmount(value) {
 
 function getPrimaryRecipeForName(name) {
   return (recipeIndex.get(name) || []).find((recipe) => !recipe.enchanted) || null;
+}
+
+function producerSearchLimit(itemName) {
+  return itemName === "Chopped Fish" ? 24 : 4;
 }
 
 function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourceText, consumedMap = {}) {
