@@ -178,6 +178,7 @@ let ocrRunning = false;
 let liveOcrStream = null;
 let liveOcrTimer = null;
 let liveOcrFrameBusy = false;
+let lastLiveOcrText = "";
 
 const inventoryList = document.querySelector("#inventory-list");
 const materialPickerSearch = document.querySelector("#material-picker-search");
@@ -1415,8 +1416,8 @@ async function startLiveInventoryScan() {
     ocrPreviewEmpty.hidden = true;
     await ocrPreview.play();
     setOcrStatus("Live scan running. Hover item tooltips in Albion and wait a moment.");
-    liveOcrTimer = window.setInterval(scanLiveInventoryFrame, 1800);
-    window.setTimeout(scanLiveInventoryFrame, 900);
+    liveOcrTimer = window.setInterval(scanLiveInventoryFrame, 950);
+    window.setTimeout(scanLiveInventoryFrame, 180);
   } catch (error) {
     setOcrStatus(formatLiveScanError(error));
     stopLiveInventoryScan("", true);
@@ -1478,6 +1479,7 @@ function stopLiveInventoryScan(message = "Live scan stopped.", silent = false) {
   ocrPreviewEmpty.hidden = false;
   ocrRunning = false;
   liveOcrFrameBusy = false;
+  lastLiveOcrText = "";
   ocrRunButton.disabled = false;
   ocrStopButton.disabled = true;
   if (!silent) {
@@ -1493,7 +1495,12 @@ async function scanLiveInventoryFrame() {
 
   try {
     const canvas = buildOcrCanvasFromVideo(ocrPreview);
-    const result = await window.Tesseract.recognize(canvas, "eng");
+    const result = await window.Tesseract.recognize(canvas, "eng", {
+      tessedit_pageseg_mode: window.Tesseract?.PSM?.SPARSE_TEXT || 11,
+      preserve_interword_spaces: "1"
+    });
+    const rawText = String(result.data?.text || "").trim();
+    lastLiveOcrText = rawText;
     const nextMatches = extractMaterialsFromOcr(result.data || {});
     mergeDetectedOcrMatches(nextMatches);
     renderOcrResults();
@@ -1502,7 +1509,11 @@ async function scanLiveInventoryFrame() {
       ocrImportButton.disabled = false;
       setOcrStatus(`Live scan running. Detected ${detectedOcrMatches.length} material name(s) so far.`);
     } else {
-      setOcrStatus("Live scan running. Hover a resource until its tooltip text is clearly visible.");
+      setOcrStatus(
+        rawText
+          ? `Live scan running. Reading text but no material matched yet: ${truncateOcrPreview(rawText)}`
+          : "Live scan running. Hover a resource until its tooltip text is clearly visible."
+      );
     }
   } catch (error) {
     setOcrStatus(`Live OCR frame failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -1512,19 +1523,20 @@ async function scanLiveInventoryFrame() {
 }
 
 function buildOcrCanvasFromVideo(video) {
-  const scale = Math.min(1.6, 1600 / Math.max(1, video.videoWidth));
+  const crop = getLiveOcrCrop(video.videoWidth, video.videoHeight);
+  const scale = Math.min(1.15, 1180 / Math.max(1, crop.width));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
-  canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+  canvas.width = Math.max(1, Math.round(crop.width * scale));
+  canvas.height = Math.max(1, Math.round(crop.height * scale));
   const context = canvas.getContext("2d", { willReadFrequently: true });
-  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  context.drawImage(video, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
 
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
 
   for (let index = 0; index < data.length; index += 4) {
     const gray = Math.round(data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114);
-    const boosted = gray > 168 ? 255 : gray < 84 ? 0 : gray;
+    const boosted = gray > 176 ? 255 : gray < 78 ? 0 : gray;
     data[index] = boosted;
     data[index + 1] = boosted;
     data[index + 2] = boosted;
@@ -1532,6 +1544,20 @@ function buildOcrCanvasFromVideo(video) {
 
   context.putImageData(imageData, 0, 0);
   return canvas;
+}
+
+function getLiveOcrCrop(width, height) {
+  return {
+    x: Math.round(width * 0.08),
+    y: Math.round(height * 0.08),
+    width: Math.round(width * 0.84),
+    height: Math.round(height * 0.78)
+  };
+}
+
+function truncateOcrPreview(text) {
+  const singleLine = String(text || "").replace(/\s+/g, " ").trim();
+  return singleLine.length > 70 ? `${singleLine.slice(0, 67)}...` : singleLine;
 }
 
 function extractMaterialsFromOcr(ocrData) {
