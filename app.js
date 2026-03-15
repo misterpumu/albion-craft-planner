@@ -1759,37 +1759,128 @@ function buildTravelStops(stepEntries) {
 
 function optimizeTravelStops(stops, startingCity) {
   if (stops.length <= 1) return stops;
-
-  const firstCraftIndex = stops.findIndex((stop) => stop.craftOutputs.length);
-  if (firstCraftIndex <= 1) return stops;
-
-  const prefix = optimizeStopPrefix(stops.slice(0, firstCraftIndex), startingCity);
-  return [...prefix, ...stops.slice(firstCraftIndex)];
-}
-
-function optimizeStopPrefix(stops, startingCity) {
-  const remaining = [...stops];
   const optimized = [];
   let current = KNOWN_CITIES.has(startingCity) ? startingCity : "Caerleon";
+  let index = 0;
+
+  while (index < stops.length) {
+    if (stops[index].craftOutputs.length) {
+      optimized.push(stops[index]);
+      current = stops[index].destination;
+      index += 1;
+      continue;
+    }
+
+    let segmentEnd = index;
+    while (segmentEnd < stops.length && !stops[segmentEnd].craftOutputs.length) {
+      segmentEnd += 1;
+    }
+
+    const segment = mergeTravelStopsByDestination(stops.slice(index, segmentEnd));
+    const nextAnchorCity = segmentEnd < stops.length ? stops[segmentEnd].destination : "";
+    const optimizedSegment = optimizeRefineSegment(segment, current, nextAnchorCity);
+
+    optimized.push(...optimizedSegment);
+    if (optimizedSegment.length) {
+      current = optimizedSegment[optimizedSegment.length - 1].destination;
+    }
+
+    index = segmentEnd;
+  }
+
+  return optimized;
+}
+
+function mergeTravelStopsByDestination(stops) {
+  const merged = new Map();
+  const order = [];
+
+  stops.forEach((stop) => {
+    if (!merged.has(stop.destination)) {
+      merged.set(stop.destination, createTravelStop(stop.destination));
+      order.push(stop.destination);
+    }
+
+    const target = merged.get(stop.destination);
+    stop.refineOutputs.forEach((name) => {
+      if (!target.refineOutputs.includes(name)) {
+        target.refineOutputs.push(name);
+      }
+    });
+  });
+
+  return order.map((destination) => merged.get(destination));
+}
+
+function optimizeRefineSegment(stops, startCity, endCity = "") {
+  if (stops.length <= 1) return stops;
+  if (stops.length > 7) {
+    return optimizeRefineSegmentGreedy(stops, startCity, endCity);
+  }
+
+  let bestRoute = stops;
+  let bestCost = Number.POSITIVE_INFINITY;
+  const used = new Array(stops.length).fill(false);
+  const route = [];
+
+  const dfs = (currentCity, costSoFar) => {
+    if (route.length === stops.length) {
+      const tailCost = endCity ? getCityDistance(currentCity, endCity) : 0;
+      const totalCost = costSoFar + tailCost;
+      if (totalCost < bestCost) {
+        bestCost = totalCost;
+        bestRoute = route.map((stop) => stop);
+      }
+      return;
+    }
+
+    if (costSoFar >= bestCost) return;
+
+    for (let index = 0; index < stops.length; index += 1) {
+      if (used[index]) continue;
+      const stop = stops[index];
+      used[index] = true;
+      route.push(stop);
+      dfs(stop.destination, costSoFar + getCityDistance(currentCity, stop.destination));
+      route.pop();
+      used[index] = false;
+    }
+  };
+
+  dfs(startCity, 0);
+  return bestRoute;
+}
+
+function optimizeRefineSegmentGreedy(stops, startCity, endCity = "") {
+  const remaining = [...stops];
+  const optimized = [];
+  let current = startCity;
 
   while (remaining.length) {
     let bestIndex = 0;
-    let bestDistance = Number.POSITIVE_INFINITY;
+    let bestScore = Number.POSITIVE_INFINITY;
 
     remaining.forEach((stop, index) => {
-      const path = findShortestCityPath(current, stop.destination);
-      const distance = path.length ? path.length - 1 : Number.POSITIVE_INFINITY;
-      if (distance < bestDistance) {
-        bestDistance = distance;
+      const hereCost = getCityDistance(current, stop.destination);
+      const tailCost = endCity ? getCityDistance(stop.destination, endCity) : 0;
+      const score = hereCost * 10 + tailCost;
+      if (score < bestScore) {
+        bestScore = score;
         bestIndex = index;
       }
     });
 
-    optimized.push(remaining.splice(bestIndex, 1)[0]);
-    current = optimized[optimized.length - 1].destination;
+    const [nextStop] = remaining.splice(bestIndex, 1);
+    optimized.push(nextStop);
+    current = nextStop.destination;
   }
 
   return optimized;
+}
+
+function getCityDistance(start, end) {
+  const path = findShortestCityPath(start, end);
+  return path.length ? path.length - 1 : Number.POSITIVE_INFINITY;
 }
 
 function createTravelStop(destination) {
