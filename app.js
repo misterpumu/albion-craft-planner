@@ -1698,47 +1698,11 @@ function buildMissingItem(name, amount, metaText = `Still needed: x${formatEstim
 }
 
 function buildTravelAdvice(stepEntries, consumedMap = {}) {
-  const grouped = new Map();
   const spareInventory = subtractInventory(inventory, consumedMap);
-  let currentCity = routeSettings.startingCity || "Caerleon";
-
-  stepEntries.forEach((entry) => {
-    const destination = entry.recipe.plannerType === "refine" ? getBestRefiningCityForRecipe(entry.recipe) : currentCity;
-    if (entry.recipe.plannerType === "refine" && destination) {
-      currentCity = destination;
-    }
-
-    if (!destination) return;
-    if (!grouped.has(destination)) {
-      grouped.set(destination, {
-        destination,
-        refineOutputs: [],
-        craftOutputs: [],
-        craftStations: []
-      });
-    }
-
-    const activeGroup = grouped.get(destination);
-    if (entry.recipe.plannerType === "refine") {
-      if (!activeGroup.refineOutputs.includes(entry.recipe.outputName)) {
-        activeGroup.refineOutputs.push(entry.recipe.outputName);
-      }
-      return;
-    }
-
-    if (!activeGroup.craftOutputs.includes(entry.recipe.outputName)) {
-      activeGroup.craftOutputs.push(entry.recipe.outputName);
-    }
-    const stationName = entry.recipe.craftedAt || "Crafting station";
-    if (!activeGroup.craftStations.includes(stationName)) {
-      activeGroup.craftStations.push(stationName);
-    }
-  });
-
-  const orderedGroups = orderTravelGroups(Array.from(grouped.values()), routeSettings.startingCity);
   let previousCity = routeSettings.startingCity || "Caerleon";
+  const optimizedStops = optimizeTravelStops(buildTravelStops(stepEntries), routeSettings.startingCity);
 
-  return orderedGroups.map((group, index) => {
+  return optimizedStops.map((group, index) => {
     const outputName = group.refineOutputs[0] || group.craftOutputs[0] || group.destination;
     const outputId = itemIconMap.get(outputName) || "";
     const tasks = [];
@@ -1766,19 +1730,54 @@ function buildTravelAdvice(stepEntries, consumedMap = {}) {
   });
 }
 
-function orderTravelGroups(groups, startingCity) {
-  if (!groups.length) return groups;
-  const start = KNOWN_CITIES.has(startingCity) ? startingCity : "Caerleon";
-  const remaining = [...groups];
-  const ordered = [];
-  let current = start;
+function buildTravelStops(stepEntries) {
+  const stops = [];
+  let currentCity = routeSettings.startingCity || "Caerleon";
+
+  stepEntries.forEach((entry) => {
+    const destination = entry.recipe.plannerType === "refine" ? getBestRefiningCityForRecipe(entry.recipe) : currentCity;
+    if (!destination) return;
+
+    if (entry.recipe.plannerType === "refine") {
+      currentCity = destination;
+    }
+
+    const previousStop = stops[stops.length - 1];
+    const activeStop = previousStop && previousStop.destination === destination
+      ? previousStop
+      : createTravelStop(destination);
+
+    if (activeStop !== previousStop) {
+      stops.push(activeStop);
+    }
+
+    appendTravelTask(activeStop, entry);
+  });
+
+  return stops;
+}
+
+function optimizeTravelStops(stops, startingCity) {
+  if (stops.length <= 1) return stops;
+
+  const firstCraftIndex = stops.findIndex((stop) => stop.craftOutputs.length);
+  if (firstCraftIndex <= 1) return stops;
+
+  const prefix = optimizeStopPrefix(stops.slice(0, firstCraftIndex), startingCity);
+  return [...prefix, ...stops.slice(firstCraftIndex)];
+}
+
+function optimizeStopPrefix(stops, startingCity) {
+  const remaining = [...stops];
+  const optimized = [];
+  let current = KNOWN_CITIES.has(startingCity) ? startingCity : "Caerleon";
 
   while (remaining.length) {
     let bestIndex = 0;
     let bestDistance = Number.POSITIVE_INFINITY;
 
-    remaining.forEach((group, index) => {
-      const path = findShortestCityPath(current, group.destination);
+    remaining.forEach((stop, index) => {
+      const path = findShortestCityPath(current, stop.destination);
       const distance = path.length ? path.length - 1 : Number.POSITIVE_INFINITY;
       if (distance < bestDistance) {
         bestDistance = distance;
@@ -1786,12 +1785,38 @@ function orderTravelGroups(groups, startingCity) {
       }
     });
 
-    const [nextGroup] = remaining.splice(bestIndex, 1);
-    ordered.push(nextGroup);
-    current = nextGroup.destination;
+    optimized.push(remaining.splice(bestIndex, 1)[0]);
+    current = optimized[optimized.length - 1].destination;
   }
 
-  return ordered;
+  return optimized;
+}
+
+function createTravelStop(destination) {
+  return {
+    destination,
+    refineOutputs: [],
+    craftOutputs: [],
+    craftStations: []
+  };
+}
+
+function appendTravelTask(stop, entry) {
+  if (entry.recipe.plannerType === "refine") {
+    if (!stop.refineOutputs.includes(entry.recipe.outputName)) {
+      stop.refineOutputs.push(entry.recipe.outputName);
+    }
+    return;
+  }
+
+  if (!stop.craftOutputs.includes(entry.recipe.outputName)) {
+    stop.craftOutputs.push(entry.recipe.outputName);
+  }
+
+  const stationName = entry.recipe.craftedAt || "Crafting station";
+  if (!stop.craftStations.includes(stationName)) {
+    stop.craftStations.push(stationName);
+  }
 }
 
 function buildTravelEyebrow(destination, travelPath, isFirstStop = false) {
