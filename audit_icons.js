@@ -2,7 +2,13 @@ const fs = require("fs");
 
 const appText = fs.readFileSync("app.js", "utf8");
 const catalogText = fs.readFileSync("catalog-data.js", "utf8");
+const ingredientIconText = fs.existsSync("ingredient-icon-data.js")
+  ? fs.readFileSync("ingredient-icon-data.js", "utf8")
+  : "window.__ALBION_INGREDIENT_ICONS__ = {};\n";
 const catalog = JSON.parse(catalogText.replace(/^window\.__ALBION_CATALOG__ = /, "").replace(/;?\s*$/, ""));
+const ingredientIconMap = JSON.parse(
+  ingredientIconText.replace(/^window\.__ALBION_INGREDIENT_ICONS__ = /, "").replace(/;?\s*$/, "")
+);
 
 const quickItems = [
   "Copper Ore",
@@ -62,15 +68,18 @@ const quickItems = [
   "Fortified Leather",
   "Imbued Leather"
 ];
-const fishItems = extractStringArray(appText, "FISH_ITEMS");
 const aliases = extractAliasMap(appText, "MATERIAL_NAME_ALIASES");
 const manualIconIds = extractObjectMap(appText, "MANUAL_ICON_IDS");
 
 const iconMap = new Map();
 const ingredientUsage = new Map();
 
-for (const name of [...quickItems, ...fishItems]) {
+for (const name of quickItems) {
   iconMap.set(name, "local-list");
+}
+
+for (const [name, iconId] of Object.entries(ingredientIconMap)) {
+  iconMap.set(name, iconId);
 }
 
 for (const [name, iconId] of manualIconIds.entries()) {
@@ -98,24 +107,6 @@ for (const name of ingredientUsage.keys()) {
   const normalized = normalizeVariant(name);
   if (normalized !== name && iconMap.has(normalized) && !iconMap.has(name)) {
     iconMap.set(name, `variant:${normalized}`);
-  }
-}
-
-for (const recipe of catalog.recipes) {
-  const outputId = String(recipe.id || "").split("@")[0];
-  if (!outputId) continue;
-
-  for (const name of Object.keys(recipe.ingredients || {})) {
-    const normalized = normalizeVariant(aliases.get(name) || name);
-    if (!normalized || iconMap.has(name) || iconMap.has(normalized)) continue;
-    iconMap.set(normalized, `recipe:${outputId}`);
-  }
-}
-
-for (const name of ingredientUsage.keys()) {
-  const normalized = normalizeVariant(aliases.get(name) || name);
-  if (normalized && iconMap.has(normalized) && !iconMap.has(name)) {
-    iconMap.set(name, `derived:${normalized}`);
   }
 }
 

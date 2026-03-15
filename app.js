@@ -110,7 +110,24 @@ const FISH_ITEMS = [
   "Special Fish Sauce",
   "Chopped Fish"
 ];
+const EXACT_INGREDIENT_ICON_IDS = window.__ALBION_INGREDIENT_ICONS__ || {};
 const MANUAL_ICON_IDS = {
+  "Common Rudd": "T1_FISH_FRESHWATER_ALL_COMMON",
+  "Striped Carp": "T2_FISH_FRESHWATER_ALL_COMMON",
+  "Albion Perch": "T3_FISH_FRESHWATER_ALL_COMMON",
+  "Bluescale Pike": "T4_FISH_FRESHWATER_ALL_COMMON",
+  "Spotted Trout": "T5_FISH_FRESHWATER_ALL_COMMON",
+  "Brightscale Zander": "T6_FISH_FRESHWATER_ALL_COMMON",
+  "Danglemouth Catfish": "T7_FISH_FRESHWATER_ALL_COMMON",
+  "River Sturgeon": "T8_FISH_FRESHWATER_ALL_COMMON",
+  "Common Herring": "T1_FISH_SALTWATER_ALL_COMMON",
+  "Striped Mackerel": "T2_FISH_SALTWATER_ALL_COMMON",
+  "Flatshore Plaice": "T3_FISH_SALTWATER_ALL_COMMON",
+  "Bluescale Cod": "T4_FISH_SALTWATER_ALL_COMMON",
+  "Spotted Wolffish": "T5_FISH_SALTWATER_ALL_COMMON",
+  "Strongfin Salmon": "T6_FISH_SALTWATER_ALL_COMMON",
+  "Bluefin Tuna": "T7_FISH_SALTWATER_ALL_COMMON",
+  "Steelscale Swordfish": "T8_FISH_SALTWATER_ALL_COMMON",
   Seaweed: "T1_SEAWEED",
   "Chopped Fish": "T1_FISHCHOPS",
   "Basic Fish Sauce": "T1_FISHSAUCE_LEVEL1",
@@ -514,6 +531,10 @@ function buildItemIconMap(recipeList) {
     map.set(item.name, item.iconId);
   });
 
+  Object.entries(EXACT_INGREDIENT_ICON_IDS).forEach(([name, iconId]) => {
+    map.set(name, iconId);
+  });
+
   Object.entries(MANUAL_ICON_IDS).forEach(([name, iconId]) => {
     map.set(name, iconId);
   });
@@ -522,17 +543,6 @@ function buildItemIconMap(recipeList) {
     if (recipe.outputId && !map.has(recipe.outputName)) {
       map.set(recipe.outputName, recipe.outputId);
     }
-  });
-
-  recipeList.forEach((recipe) => {
-    const fallbackIconId = recipe.outputId || map.get(recipe.outputName);
-    if (!fallbackIconId) return;
-
-    Object.keys(recipe.ingredients || {}).forEach((ingredientName) => {
-      const normalizedIngredient = normalizeIconLookupName(ingredientName);
-      if (!normalizedIngredient || map.has(ingredientName) || map.has(normalizedIngredient)) return;
-      map.set(normalizedIngredient, fallbackIconId);
-    });
   });
 
   Array.from(map.entries()).forEach(([name, iconId]) => {
