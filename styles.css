@@ -483,6 +483,19 @@ textarea {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22) inset;
 }
 
+.screenshot-point {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  border-radius: 999px;
+  background: var(--gold-strong);
+  border: 2px solid rgba(25, 15, 10, 0.9);
+  pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+}
+
 .ocr-result {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

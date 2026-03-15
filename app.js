@@ -180,6 +180,8 @@ let screenshotRecognitionRunning = false;
 let screenshotBitmap = null;
 let screenshotSelection = null;
 let screenshotDragState = null;
+let screenshotGridMarkMode = false;
+let screenshotGridPoints = [];
 const iconDescriptorCache = new Map();
 let screenshotMaterialCandidates = [];
 
@@ -195,6 +197,7 @@ const targetPlan = document.querySelector("#target-plan");
 const bulkInput = document.querySelector("#bulk-input");
 const applyBulkButton = document.querySelector("#apply-bulk-button");
 const screenshotFileInput = document.querySelector("#screenshot-file-input");
+const screenshotMarkGridButton = document.querySelector("#screenshot-mark-grid-button");
 const screenshotScanButton = document.querySelector("#screenshot-scan-button");
 const screenshotImportButton = document.querySelector("#screenshot-import-button");
 const screenshotClearButton = document.querySelector("#screenshot-clear-button");
@@ -202,6 +205,8 @@ const screenshotStatus = document.querySelector("#screenshot-status");
 const screenshotPreviewShell = document.querySelector("#screenshot-preview-shell");
 const screenshotPreview = document.querySelector("#screenshot-preview");
 const screenshotSelectionBox = document.querySelector("#screenshot-selection");
+const screenshotPointA = document.querySelector("#screenshot-point-a");
+const screenshotPointB = document.querySelector("#screenshot-point-b");
 const screenshotPreviewEmpty = document.querySelector("#screenshot-preview-empty");
 const screenshotResults = document.querySelector("#screenshot-results");
 const resetButton = document.querySelector("#reset-button");
@@ -283,10 +288,12 @@ function bindEvents() {
   });
 
   screenshotFileInput.addEventListener("change", handleScreenshotSelection);
+  screenshotMarkGridButton.addEventListener("click", toggleScreenshotGridMarkMode);
   screenshotScanButton.addEventListener("click", scanScreenshotInventory);
   screenshotImportButton.addEventListener("click", importDetectedScreenshotMaterials);
   screenshotClearButton.addEventListener("click", clearScreenshotImport);
   screenshotPreview.addEventListener("mousedown", beginScreenshotSelection);
+  screenshotPreview.addEventListener("click", handleScreenshotGridPointClick);
   window.addEventListener("mousemove", updateScreenshotSelection);
   window.addEventListener("mouseup", finishScreenshotSelection);
 
@@ -1404,8 +1411,9 @@ async function handleScreenshotSelection() {
     screenshotPreview.src = screenshotObjectUrl;
     screenshotPreview.hidden = false;
     screenshotPreviewEmpty.hidden = true;
+    screenshotMarkGridButton.disabled = false;
     screenshotScanButton.disabled = false;
-    setScreenshotStatus("Screenshot loaded. Click Scan visible slots. If needed, drag over the inventory area first.");
+    setScreenshotStatus("Screenshot loaded. Best mode: mark the first and last visible slot, then scan.");
   } catch (error) {
     clearScreenshotImport(false);
     setScreenshotStatus(`Could not load screenshot: ${error instanceof Error ? error.message : String(error)}`);
@@ -1433,7 +1441,8 @@ async function scanScreenshotInventory() {
       height: screenshotBitmap.height
     };
     setScreenshotStatus("Detecting inventory grid and visible slots...");
-    const grid = estimateScreenshotGrid(scanBounds);
+    const manualGrid = inferGridFromMarkedPoints();
+    const grid = manualGrid || estimateScreenshotGrid(scanBounds);
     const slotSize = grid?.slotSize || DEFAULT_SCREENSHOT_SLOT_SIZE;
     const slotCandidates = grid?.slots?.length
       ? grid.slots
@@ -1510,11 +1519,45 @@ function buildSlotCanvasFromBitmap(centerX, centerY, slotSize) {
 }
 
 function beginScreenshotSelection(event) {
+  if (screenshotGridMarkMode) return;
   if (!screenshotBitmap || screenshotPreview.hidden) return;
   const point = mapPointerToPreview(event.clientX, event.clientY);
   if (!point) return;
   screenshotDragState = { startX: point.x, startY: point.y, currentX: point.x, currentY: point.y };
   updateScreenshotSelectionBox();
+}
+
+function toggleScreenshotGridMarkMode() {
+  if (!screenshotBitmap) return;
+  screenshotGridMarkMode = !screenshotGridMarkMode;
+  screenshotGridPoints = [];
+  updateScreenshotGridPoints();
+  screenshotMarkGridButton.textContent = screenshotGridMarkMode ? "Cancel marking" : "Mark first and last slot";
+  if (screenshotGridMarkMode) {
+    setScreenshotStatus("Click the top-left visible slot center, then the bottom-right visible slot center.");
+  } else {
+    setScreenshotStatus("Grid marking cancelled. You can still scan automatically or drag over the inventory area.");
+  }
+}
+
+function handleScreenshotGridPointClick(event) {
+  if (!screenshotGridMarkMode || !screenshotBitmap || screenshotPreview.hidden) return;
+  const point = mapPointerToPreview(event.clientX, event.clientY);
+  if (!point) return;
+  event.preventDefault();
+  event.stopPropagation();
+  screenshotGridPoints.push(point);
+  screenshotGridPoints = screenshotGridPoints.slice(0, 2);
+  updateScreenshotGridPoints();
+
+  if (screenshotGridPoints.length === 1) {
+    setScreenshotStatus("First slot marked. Now click the bottom-right visible slot center.");
+    return;
+  }
+
+  screenshotGridMarkMode = false;
+  screenshotMarkGridButton.textContent = "Mark first and last slot";
+  setScreenshotStatus("Grid anchors marked. Click Scan visible slots.");
 }
 
 function updateScreenshotSelection(event) {
@@ -1595,6 +1638,21 @@ function updateScreenshotSelectionBox() {
   screenshotSelectionBox.style.maxHeight = `${Math.max(0, shellRect.height - (top - screenshotPreview.offsetTop))}px`;
 }
 
+function updateScreenshotGridPoints() {
+  const points = [screenshotPointA, screenshotPointB];
+  points.forEach((node, index) => {
+    const point = screenshotGridPoints[index];
+    if (!point) {
+      node.hidden = true;
+      return;
+    }
+
+    node.hidden = false;
+    node.style.left = `${screenshotPreview.offsetLeft + point.x}px`;
+    node.style.top = `${screenshotPreview.offsetTop + point.y}px`;
+  });
+}
+
 function getNaturalScreenshotSelection() {
   if (!screenshotSelection) return null;
   const previewRect = screenshotPreview.getBoundingClientRect();
@@ -1607,6 +1665,55 @@ function getNaturalScreenshotSelection() {
     width: Math.round(screenshotSelection.width * ratioX),
     height: Math.round(screenshotSelection.height * ratioY)
   };
+}
+
+function inferGridFromMarkedPoints() {
+  if (screenshotGridPoints.length !== 2) return null;
+  const previewRect = screenshotPreview.getBoundingClientRect();
+  const ratioX = screenshotPreview.naturalWidth / Math.max(1, previewRect.width);
+  const ratioY = screenshotPreview.naturalHeight / Math.max(1, previewRect.height);
+  const first = {
+    x: screenshotGridPoints[0].x * ratioX,
+    y: screenshotGridPoints[0].y * ratioY
+  };
+  const last = {
+    x: screenshotGridPoints[1].x * ratioX,
+    y: screenshotGridPoints[1].y * ratioY
+  };
+
+  let best = null;
+  for (let cols = 1; cols <= 8; cols += 1) {
+    for (let rows = 1; rows <= 8; rows += 1) {
+      const pitchX = cols === 1 ? DEFAULT_SCREENSHOT_SLOT_SIZE : (last.x - first.x) / (cols - 1);
+      const pitchY = rows === 1 ? DEFAULT_SCREENSHOT_SLOT_SIZE : (last.y - first.y) / (rows - 1);
+      const slotSize = (pitchX + pitchY) / 2;
+      if (slotSize < 48 || slotSize > 110) continue;
+      if (Math.abs(pitchX - pitchY) > 12) continue;
+
+      const slots = [];
+      let totalScore = 0;
+      for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < cols; col += 1) {
+          const centerX = first.x + col * pitchX;
+          const centerY = first.y + row * pitchY;
+          const score = scoreSlotCandidate(centerX, centerY, slotSize);
+          slots.push({ centerX, centerY, score });
+          totalScore += score;
+        }
+      }
+
+      const averageScore = totalScore / Math.max(1, slots.length);
+      if (!best || averageScore > best.score) {
+        best = {
+          score: averageScore,
+          slotSize,
+          slots: slots.filter((slot) => slot.score >= 0.24)
+        };
+      }
+    }
+  }
+
+  return best && best.slots.length ? best : null;
 }
 
 function findScreenshotSlotCandidates(slotSize, bounds) {
@@ -2033,11 +2140,17 @@ function clearScreenshotImport(resetInput = true) {
   detectedScreenshotMatches = [];
   screenshotSelection = null;
   screenshotDragState = null;
+  screenshotGridMarkMode = false;
+  screenshotGridPoints = [];
   renderScreenshotResults();
   screenshotPreview.hidden = true;
   screenshotPreview.removeAttribute("src");
   screenshotPreviewEmpty.hidden = false;
   screenshotSelectionBox.hidden = true;
+  screenshotPointA.hidden = true;
+  screenshotPointB.hidden = true;
+  screenshotMarkGridButton.disabled = true;
+  screenshotMarkGridButton.textContent = "Mark first and last slot";
   screenshotScanButton.disabled = true;
   screenshotImportButton.disabled = true;
 
@@ -2045,7 +2158,7 @@ function clearScreenshotImport(resetInput = true) {
     screenshotFileInput.value = "";
   }
 
-  setScreenshotStatus("Upload a screenshot and scan it. If needed, drag over the inventory area first to limit the scan.");
+  setScreenshotStatus("Upload a screenshot. Best mode: click Mark first and last slot, then click the top-left visible slot and the bottom-right visible slot.");
 }
 
 function setScreenshotStatus(message) {
