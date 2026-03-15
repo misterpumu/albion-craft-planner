@@ -17,9 +17,9 @@ const CITY_GRAPH = {
   Caerleon: ["Bridgewatch", "Fort Sterling", "Lymhurst", "Martlock", "Thetford", "Brecilien"],
   Bridgewatch: ["Caerleon", "Martlock", "Thetford"],
   Martlock: ["Bridgewatch", "Caerleon", "Fort Sterling"],
-  "Fort Sterling": ["Martlock", "Caerleon", "Lymhurst"],
-  Lymhurst: ["Fort Sterling", "Caerleon", "Thetford"],
-  Thetford: ["Lymhurst", "Caerleon", "Bridgewatch"],
+  "Fort Sterling": ["Martlock", "Caerleon", "Lymhurst", "Thetford"],
+  Lymhurst: ["Fort Sterling", "Caerleon"],
+  Thetford: ["Fort Sterling", "Caerleon", "Bridgewatch"],
   Brecilien: ["Caerleon"]
 };
 const KNOWN_CITIES = new Set(Object.keys(CITY_GRAPH));
