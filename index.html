@@ -61,39 +61,6 @@
         </label>
         <button id="apply-bulk-button" class="primary-button" type="button">Apply inventory</button>
 
-        <section class="ocr-panel">
-          <div class="card__header inventory-current-header">
-            <div>
-              <p class="section-label">Screenshot</p>
-              <h2>Import from inventory screenshot</h2>
-            </div>
-          </div>
-          <p class="helper-text">
-            Upload a full inventory screenshot, drag once over the inventory area, and the app will scan the visible resource slots inside that region in your browser. The image is not stored.
-          </p>
-          <label class="bulk-input">
-            <span>Screenshot file</span>
-            <input id="screenshot-file-input" type="file" accept="image/*">
-          </label>
-          <div class="ocr-actions">
-            <button id="screenshot-mark-grid-button" class="ghost-button" type="button" disabled>Mark first and last slot</button>
-            <button id="screenshot-scan-button" class="primary-button primary-button--compact" type="button" disabled>Scan visible slots</button>
-            <button id="screenshot-import-button" class="ghost-button" type="button" disabled>Import detected</button>
-            <button id="screenshot-clear-button" class="ghost-button" type="button">Clear screenshot</button>
-          </div>
-          <p id="screenshot-status" class="helper-text">Upload a screenshot. Best mode: click Mark first and last slot, then click the top-left visible slot and the bottom-right visible slot.</p>
-          <div class="screenshot-stage">
-            <div id="screenshot-preview-shell" class="screenshot-preview-shell">
-              <img id="screenshot-preview" class="screenshot-preview" alt="" hidden>
-              <div id="screenshot-selection" class="screenshot-selection" hidden></div>
-              <div id="screenshot-point-a" class="screenshot-point" hidden></div>
-              <div id="screenshot-point-b" class="screenshot-point" hidden></div>
-              <p id="screenshot-preview-empty" class="helper-text">No screenshot loaded yet.</p>
-            </div>
-          </div>
-          <div id="screenshot-results" class="ocr-results"></div>
-        </section>
-
         <div class="card__header inventory-current-header">
           <div>
             <p class="section-label">Current</p>
@@ -314,7 +281,6 @@
 
   <script src="catalog-data.js"></script>
   <script src="ingredient-icon-data.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
