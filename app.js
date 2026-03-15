@@ -1816,6 +1816,7 @@ function scoreSlotCandidate(centerX, centerY, slotSize) {
 async function matchSlotToMaterial(slotCanvas) {
   const slotDescriptor = buildImageDescriptor(extractIconArea(slotCanvas));
   let best = null;
+  let secondBest = null;
 
   for (const candidate of screenshotMaterialCandidates) {
     const iconDescriptor = await getIconDescriptor(candidate.iconId);
@@ -1823,18 +1824,28 @@ async function matchSlotToMaterial(slotCanvas) {
 
     const score = compareImageDescriptors(slotDescriptor, iconDescriptor);
     if (!best || score < best.score) {
+      secondBest = best;
       best = { name: candidate.name, score };
+    } else if (!secondBest || score < secondBest.score) {
+      secondBest = { name: candidate.name, score };
     }
   }
 
-  return best && best.score < 64 ? best : null;
+  if (!best) return null;
+
+  const gap = secondBest ? secondBest.score - best.score : 999;
+  if (best.score < 92 || gap > 4) {
+    return { ...best, gap };
+  }
+
+  return null;
 }
 
 function extractIconArea(slotCanvas) {
   const size = Math.min(slotCanvas.width, slotCanvas.height);
-  const iconSize = Math.round(size * 0.74);
+  const iconSize = Math.round(size * 0.58);
   const left = Math.round((slotCanvas.width - iconSize) / 2);
-  const top = Math.round(size * 0.06);
+  const top = Math.round(size * 0.14);
   const canvas = document.createElement("canvas");
   canvas.width = iconSize;
   canvas.height = iconSize;
@@ -1875,33 +1886,60 @@ async function getIconDescriptor(iconId) {
 
 function buildImageDescriptor(sourceCanvas) {
   const canvas = document.createElement("canvas");
-  canvas.width = 20;
-  canvas.height = 20;
+  canvas.width = 16;
+  canvas.height = 16;
   const context = canvas.getContext("2d", { willReadFrequently: true });
   context.drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
 
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
   const values = [];
+  let totalWeight = 0;
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
 
   for (let index = 0; index < data.length; index += 4) {
     const alpha = data[index + 3] / 255;
-    const gray = (data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114) * alpha;
-    values.push(gray);
+    totalWeight += alpha;
+    sumR += data[index] * alpha;
+    sumG += data[index + 1] * alpha;
+    sumB += data[index + 2] * alpha;
   }
 
-  return values;
+  const meanR = totalWeight ? sumR / totalWeight : 0;
+  const meanG = totalWeight ? sumG / totalWeight : 0;
+  const meanB = totalWeight ? sumB / totalWeight : 0;
+
+  for (let index = 0; index < data.length; index += 4) {
+    const alpha = data[index + 3] / 255;
+    values.push((data[index] - meanR) * alpha);
+    values.push((data[index + 1] - meanG) * alpha);
+    values.push((data[index + 2] - meanB) * alpha);
+  }
+
+  return {
+    meanR,
+    meanG,
+    meanB,
+    values
+  };
 }
 
 function compareImageDescriptors(left, right) {
-  if (!left || !right || left.length !== right.length) return Number.POSITIVE_INFINITY;
+  if (!left || !right || left.values.length !== right.values.length) return Number.POSITIVE_INFINITY;
 
   let diff = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    diff += Math.abs(left[index] - right[index]);
+  for (let index = 0; index < left.values.length; index += 1) {
+    diff += Math.abs(left.values[index] - right.values[index]);
   }
 
-  return diff / left.length;
+  const meanDiff =
+    Math.abs(left.meanR - right.meanR) +
+    Math.abs(left.meanG - right.meanG) +
+    Math.abs(left.meanB - right.meanB);
+
+  return diff / left.values.length + meanDiff * 0.35;
 }
 
 async function readSlotAmount(slotCanvas) {
@@ -1961,7 +1999,7 @@ function renderScreenshotResults() {
     `;
 
     node.querySelector(".ocr-result__name").textContent = entry.name;
-    node.querySelector(".ocr-result__meta").textContent = `Icon match score: ${entry.score.toFixed(1)}. Click more slots to add more materials.`;
+    node.querySelector(".ocr-result__meta").textContent = `Visual match score: ${entry.score.toFixed(1)}.`;
     node.querySelector(".ocr-result__amount").textContent = `x${entry.amount}`;
     hydrateIcon(node.querySelector(".item-avatar"), entry.name);
     screenshotResults.appendChild(node);
