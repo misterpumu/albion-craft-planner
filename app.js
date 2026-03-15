@@ -1602,7 +1602,29 @@ function looksLikeMaterial(name) {
     "Amulet",
     "Fiber",
     "Metal",
-    "Wood"
+    "Wood",
+    "Fish",
+    "Trout",
+    "Snapper",
+    "Eel",
+    "Pike",
+    "Sturgeon",
+    "Catfish",
+    "Kraken",
+    "Seaweed",
+    "Flour",
+    "Milk",
+    "Egg",
+    "Butter",
+    "Bean",
+    "Goose",
+    "Pork",
+    "Chicken",
+    "Mutton",
+    "Carrot",
+    "Turnip",
+    "Cabbage",
+    "Wheat"
   ];
 
   return materialKeywords.some((keyword) => value.includes(keyword));
