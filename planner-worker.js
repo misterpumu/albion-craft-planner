@@ -6,6 +6,7 @@ let ingredientRecipeIndex = new Map();
 const inventoryAnalysisCache = new Map();
 const targetAnalysisCache = new Map();
 const relevantRecipeCache = new Map();
+const CANDIDATE_BATCH_SIZES = [80, 160, 320];
 
 self.onmessage = (event) => {
   const { type, requestId, payload } = event.data || {};
@@ -58,18 +59,29 @@ function analyzeInventory(payload) {
 
   const plans = [];
   const relevantRecipeSet = collectRelevantRecipes(inventory, cacheKey);
-  const candidatePool = finalRecipeCandidates.filter((recipe) => relevantRecipeSet.has(recipe.id));
-  const sharedRecipeMemo = new Map();
+  const candidatePool = rankCandidatePool(
+    finalRecipeCandidates.filter((recipe) => relevantRecipeSet.has(recipe.id)),
+    inventory
+  );
 
-  for (const recipe of candidatePool) {
-    const result = craftAsManyAsPossible(recipe, cloneStock(inventory), sharedRecipeMemo);
-    if (!result) continue;
+  for (const batchSize of CANDIDATE_BATCH_SIZES) {
+    const sharedRecipeMemo = new Map();
 
-    plans.push(serializePlan(recipe, result, inventory, "Consumed materials", "This route uses the materials already present in your inventory."));
-    if (plans.length >= 40) break;
+    for (const recipe of candidatePool.slice(0, batchSize)) {
+      const result = craftAsManyAsPossible(recipe, cloneStock(inventory), sharedRecipeMemo);
+      if (!result) continue;
+
+      plans.push(serializePlan(recipe, result, inventory, "Consumed materials", "This route uses the materials already present in your inventory."));
+      if (plans.length >= 40) break;
+    }
+
+    if (plans.length >= 12 || batchSize === CANDIDATE_BATCH_SIZES[CANDIDATE_BATCH_SIZES.length - 1]) {
+      break;
+    }
   }
 
   if (!plans.length) {
+    const sharedRecipeMemo = new Map();
     for (const recipe of recipes.filter((entry) => entry.plannerType === "refine" && relevantRecipeSet.has(entry.id))) {
       const result = craftAsManyAsPossible(recipe, cloneStock(inventory), sharedRecipeMemo);
       if (!result) continue;
@@ -86,6 +98,65 @@ function analyzeInventory(payload) {
 
   inventoryAnalysisCache.set(cacheKey, sorted);
   return sorted;
+}
+
+function rankCandidatePool(candidatePool, inventory) {
+  const availableNames = new Set(
+    Object.entries(inventory || {})
+      .filter(([, amount]) => amount > 0)
+      .map(([name]) => name)
+  );
+
+  return [...candidatePool].sort((left, right) => {
+    const scoreDiff = scoreCandidateAffinity(right, availableNames) - scoreCandidateAffinity(left, availableNames);
+    if (scoreDiff !== 0) return scoreDiff;
+
+    const recipeScoreDiff = scoreRecipe(right) - scoreRecipe(left);
+    if (recipeScoreDiff !== 0) return recipeScoreDiff;
+
+    return left.outputName.localeCompare(right.outputName);
+  });
+}
+
+function scoreCandidateAffinity(recipe, availableNames) {
+  const ingredientNames = Object.keys(recipe.ingredients || {});
+  if (!ingredientNames.length) return 0;
+
+  let directMatches = 0;
+  let directMaterials = 0;
+
+  ingredientNames.forEach((name) => {
+    if (availableNames.has(name)) {
+      directMatches += 1;
+    }
+
+    if (looksLikeBaseOrRefinedMaterial(name)) {
+      directMaterials += 1;
+    }
+  });
+
+  return directMatches * 100 + directMaterials * 10 + parseTier(recipe.tier);
+}
+
+function looksLikeBaseOrRefinedMaterial(name) {
+  return [
+    "Ore",
+    "Bar",
+    "Logs",
+    "Planks",
+    "Hide",
+    "Leather",
+    "Cloth",
+    "Cotton",
+    "Flax",
+    "Hemp",
+    "Skyflower",
+    "Sunflax",
+    "Ghost Hemp",
+    "Fogflower",
+    "Seaweed",
+    "Fish"
+  ].some((keyword) => String(name || "").includes(keyword));
 }
 
 function analyzeTarget(payload) {
