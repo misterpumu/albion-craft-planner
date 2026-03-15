@@ -64,12 +64,17 @@ const quickItems = [
 ];
 const fishItems = extractStringArray(appText, "FISH_ITEMS");
 const aliases = extractAliasMap(appText, "MATERIAL_NAME_ALIASES");
+const manualIconIds = extractObjectMap(appText, "MANUAL_ICON_IDS");
 
 const iconMap = new Map();
 const ingredientUsage = new Map();
 
 for (const name of [...quickItems, ...fishItems]) {
   iconMap.set(name, "local-list");
+}
+
+for (const [name, iconId] of manualIconIds.entries()) {
+  iconMap.set(name, iconId);
 }
 
 for (const recipe of catalog.recipes) {
@@ -139,6 +144,18 @@ function extractAliasMap(source, constName) {
   if (!match) return map;
   for (const entry of match[1].matchAll(/"([^"]+)":\s*"([^"]+)"/g)) {
     map.set(entry[1], entry[2]);
+  }
+  return map;
+}
+
+function extractObjectMap(source, constName) {
+  const match = source.match(new RegExp(`const ${constName} = \\{((?:.|\\r|\\n)*?)\\};`));
+  const map = new Map();
+  if (!match) return map;
+  for (const entry of match[1].matchAll(/([A-Za-z0-9_' -]+|"[^"]+"):\s*"([^"]+)"/g)) {
+    const rawKey = entry[1];
+    const key = rawKey.startsWith('"') ? rawKey.slice(1, -1) : rawKey.trim();
+    map.set(key, entry[2]);
   }
   return map;
 }

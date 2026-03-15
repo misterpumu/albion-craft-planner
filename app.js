@@ -110,6 +110,15 @@ const FISH_ITEMS = [
   "Special Fish Sauce",
   "Chopped Fish"
 ];
+const MANUAL_ICON_IDS = {
+  Seaweed: "T1_SEAWEED",
+  "Chopped Fish": "T1_FISHCHOPS",
+  "Basic Fish Sauce": "T1_FISHSAUCE_LEVEL1",
+  "Fancy Fish Sauce": "T1_FISHSAUCE_LEVEL2",
+  "Special Fish Sauce": "T1_FISHSAUCE_LEVEL3",
+  "Grilled Fish": "T1_MEAL_GRILLEDFISH",
+  "Seaweed Salad": "T1_MEAL_SEAWEEDSALAD"
+};
 const EXTRA_SEARCHABLE_TARGETS = new Set([
   "Chopped Fish",
   "Basic Fish Sauce",
@@ -503,6 +512,10 @@ function buildItemIconMap(recipeList) {
 
   QUICK_ITEMS.forEach((item) => {
     map.set(item.name, item.iconId);
+  });
+
+  Object.entries(MANUAL_ICON_IDS).forEach(([name, iconId]) => {
+    map.set(name, iconId);
   });
 
   recipeList.forEach((recipe) => {
