@@ -61,6 +61,28 @@
         </label>
         <button id="apply-bulk-button" class="primary-button" type="button">Apply inventory</button>
 
+        <section class="ocr-panel">
+          <div class="card__header inventory-current-header">
+            <div>
+              <p class="section-label">OCR</p>
+              <h2>Import from screenshot</h2>
+            </div>
+          </div>
+          <p class="helper-text">
+            Upload a screenshot and the app will try to detect materials locally in your browser. The image is not stored.
+          </p>
+          <label class="bulk-input">
+            <span>Screenshot file</span>
+            <input id="ocr-file-input" type="file" accept="image/*">
+          </label>
+          <div class="ocr-actions">
+            <button id="ocr-run-button" class="primary-button primary-button--compact" type="button">Scan Screenshot</button>
+            <button id="ocr-import-button" class="ghost-button" type="button" disabled>Import detected</button>
+          </div>
+          <p id="ocr-status" class="helper-text">No screenshot scanned yet.</p>
+          <div id="ocr-results" class="ocr-results"></div>
+        </section>
+
         <div class="card__header inventory-current-header">
           <div>
             <p class="section-label">Current</p>
@@ -281,6 +303,7 @@
 
   <script src="catalog-data.js"></script>
   <script src="ingredient-icon-data.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
