@@ -1,6 +1,91 @@
 const storageKey = "albion-crafteo-inventory-v3";
 const routeSettingsKey = "albion-crafteo-route-v1";
+const languageKey = "albion-crafteo-language-v1";
 const ALL_CATEGORIES = "__ALL__";
+const UI_TEXT = {
+  en: {
+    heroTitle: "I tell you what to refine and what to craft with what you have",
+    heroText:
+      "Add your resources and the app will look for the best possible chain with a simple heuristic: prioritize higher tier final items and use refining as an intermediate step.",
+    bestReachableTier: "Best reachable tier",
+    bestPlanSteps: "Best plan steps",
+    reachableOptions: "Reachable options",
+    inventory: "Inventory",
+    addOnlyWhatYouHave: "Add only what you have",
+    reset: "Reset",
+    inventoryHelp: "Search for a resource, choose the amount and add it. Below you will only see your current inventory, not the full catalog.",
+    searchAndAddMaterial: "Search and add material",
+    materialSearchPlaceholder: "Search and add materials with icons...",
+    quickPaste: "Quick paste",
+    applyInventory: "Apply inventory",
+    current: "Current",
+    yourInventory: "Your inventory",
+    plan: "Plan",
+    bestRecommendedChain: "Best recommended chain",
+    loadingExactCatalog: "Loading exact catalog...",
+    analyzeRecipes: "Analyze Recipes",
+    reloadPage: "Reload page",
+    startingCity: "Starting city",
+    options: "Options",
+    reachableAlternatives: "Reachable alternatives",
+    searchTarget: "Search target",
+    targetSearchPlaceholder: "Greataxe, bag, robe...",
+    category: "Category",
+    recommendationsHelp: "Recommendations are calculated from the exact local catalog plus a base refining layer for metal, wood, fiber and leather.",
+    target: "Target",
+    targetIntro: "Plan backwards from a desired item",
+    targetHelp: "Search for the item you want, choose how many units you need, and the app will tell you the steps plus the missing resources.",
+    searchTargetItem: "Search target item",
+    desiredAmount: "Desired amount",
+    analyzeTarget: "Analyze Target",
+    noTargetSelected: "No target selected yet.",
+    showSteps: "Show steps",
+    hideSteps: "Hide steps",
+    remove: "Remove",
+    language: "Language"
+  },
+  es: {
+    heroTitle: "Te digo que refinar y que craftear con lo que tienes",
+    heroText:
+      "Anade tus recursos y la app buscara la mejor cadena posible con una heuristica simple: prioriza objetos finales de tier mas alto y usa el refinado como paso intermedio.",
+    bestReachableTier: "Mejor tier alcanzable",
+    bestPlanSteps: "Pasos del mejor plan",
+    reachableOptions: "Opciones alcanzables",
+    inventory: "Inventario",
+    addOnlyWhatYouHave: "Anade solo lo que tienes",
+    reset: "Reiniciar",
+    inventoryHelp: "Busca un recurso, elige la cantidad y anadelo. Debajo solo veras tu inventario actual, no el catalogo completo.",
+    searchAndAddMaterial: "Buscar y anadir material",
+    materialSearchPlaceholder: "Busca y anade materiales con iconos...",
+    quickPaste: "Pegado rapido",
+    applyInventory: "Aplicar inventario",
+    current: "Actual",
+    yourInventory: "Tu inventario",
+    plan: "Plan",
+    bestRecommendedChain: "Mejor cadena recomendada",
+    loadingExactCatalog: "Cargando catalogo exacto...",
+    analyzeRecipes: "Analizar recetas",
+    reloadPage: "Recargar pagina",
+    startingCity: "Ciudad inicial",
+    options: "Opciones",
+    reachableAlternatives: "Alternativas alcanzables",
+    searchTarget: "Buscar objetivo",
+    targetSearchPlaceholder: "Greataxe, bolsa, tunica...",
+    category: "Categoria",
+    recommendationsHelp: "Las recomendaciones se calculan desde el catalogo local exacto mas una capa base de refinado para metal, madera, fibra, cuero y piedra.",
+    target: "Objetivo",
+    targetIntro: "Planifica hacia atras desde un objeto deseado",
+    targetHelp: "Busca el objeto que quieres, elige cuantas unidades necesitas y la app te dira los pasos y los recursos que faltan.",
+    searchTargetItem: "Buscar objeto objetivo",
+    desiredAmount: "Cantidad deseada",
+    analyzeTarget: "Analizar objetivo",
+    noTargetSelected: "Aun no hay objetivo seleccionado.",
+    showSteps: "Ver pasos",
+    hideSteps: "Ocultar pasos",
+    remove: "Eliminar",
+    language: "Idioma"
+  }
+};
 const MATERIAL_NAME_ALIASES = {
   "Baroque Cloth": "Exquisite Cloth",
   "Cured Leather": "Worked Leather"
@@ -151,9 +236,125 @@ const EXTRA_SEARCHABLE_TARGETS = new Set([
   "Grilled Fish",
   "Seaweed Salad"
 ]);
+const EXACT_NAME_TRANSLATIONS = {
+  es: {
+    "Copper Ore": "Mineral de cobre",
+    "Tin Ore": "Mineral de estano",
+    "Iron Ore": "Mineral de hierro",
+    "Titanium Ore": "Mineral de titanio",
+    "Runite Ore": "Mineral de runita",
+    "Meteorite Ore": "Mineral de meteorito",
+    "Adamantium Ore": "Mineral de adamantium",
+    "Copper Bar": "Barra de cobre",
+    "Bronze Bar": "Barra de bronce",
+    "Steel Bar": "Barra de acero",
+    "Titanium Steel Bar": "Barra de acero titanico",
+    "Runite Steel Bar": "Barra de acero de runita",
+    "Meteorite Steel Bar": "Barra de acero meteoritico",
+    "Adamantium Steel Bar": "Barra de acero de adamantium",
+    Cotton: "Algodon",
+    Flax: "Lino",
+    Hemp: "Canamo",
+    Skyflower: "Flor celeste",
+    Sunflax: "Lino solar",
+    "Ghost Hemp": "Canamo fantasmal",
+    Fogflower: "Flor de niebla",
+    "Rugged Hide": "Piel basta",
+    "Thin Hide": "Piel fina",
+    "Medium Hide": "Piel media",
+    "Heavy Hide": "Piel pesada",
+    "Thick Hide": "Piel gruesa",
+    "Robust Hide": "Piel robusta",
+    "Resilient Hide": "Piel resistente",
+    Limestone: "Caliza",
+    Sandstone: "Arenisca",
+    Travertine: "Travertino",
+    Granite: "Granito",
+    Slate: "Pizarra",
+    Basalt: "Basalto",
+    Marble: "Marmol",
+    Seaweed: "Algas",
+    "Chopped Fish": "Pescado troceado",
+    "Basic Fish Sauce": "Salsa de pescado basica",
+    "Fancy Fish Sauce": "Salsa de pescado refinada",
+    "Special Fish Sauce": "Salsa de pescado especial",
+    "Grilled Fish": "Pescado a la parrilla",
+    "Seaweed Salad": "Ensalada de algas"
+  }
+};
+const TOKEN_TRANSLATIONS = {
+  es: [
+    ["Whitewood", "Maderablanca"],
+    ["Ashenbark", "Cortezaceniza"],
+    ["Bloodoak", "Roblesangre"],
+    ["Chestnut", "Castano"],
+    ["Birch", "Abedul"],
+    ["Pine", "Pino"],
+    ["Cedar", "Cedro"],
+    ["Planks", "tablones"],
+    ["Logs", "troncos"],
+    ["Simple Cloth", "Tela simple"],
+    ["Neat Cloth", "Tela decente"],
+    ["Fine Cloth", "Tela fina"],
+    ["Ornate Cloth", "Tela ornamentada"],
+    ["Lavish Cloth", "Tela lujosa"],
+    ["Opulent Cloth", "Tela opulenta"],
+    ["Exquisite Cloth", "Tela exquisita"],
+    ["Stiff Leather", "Cuero rigido"],
+    ["Thick Leather", "Cuero grueso"],
+    ["Reinforced Leather", "Cuero reforzado"],
+    ["Worked Leather", "Cuero trabajado"],
+    ["Hardened Leather", "Cuero endurecido"],
+    ["Fortified Leather", "Cuero fortificado"],
+    ["Imbued Leather", "Cuero imbuido"],
+    ["Limestone Block", "Bloque de caliza"],
+    ["Sandstone Block", "Bloque de arenisca"],
+    ["Travertine Block", "Bloque de travertino"],
+    ["Granite Block", "Bloque de granito"],
+    ["Slate Block", "Bloque de pizarra"],
+    ["Basalt Block", "Bloque de basalto"],
+    ["Marble Block", "Bloque de marmol"],
+    ["Novice's", "de principiante"],
+    ["Journeyman's", "de aprendiz"],
+    ["Adept's", "de adepto"],
+    ["Expert's", "de experto"],
+    ["Master's", "de maestro"],
+    ["Grandmaster's", "de gran maestro"],
+    ["Elder's", "de anciano"],
+    ["Bag", "Bolsa"],
+    ["Torch", "Antorcha"],
+    ["Shield", "Escudo"],
+    ["Hammer", "Martillo"],
+    ["Axe", "Hacha"],
+    ["Sword", "Espada"],
+    ["Bow", "Arco"],
+    ["Crossbow", "Ballesta"],
+    ["Dagger", "Daga"],
+    ["Mace", "Maza"],
+    ["Spear", "Lanza"],
+    ["Staff", "Baston"],
+    ["Fire", "de fuego"],
+    ["Frost", "de hielo"],
+    ["Arcane", "arcano"],
+    ["Nature", "de naturaleza"],
+    ["Holy", "sagrado"],
+    ["Book", "Libro"],
+    ["Tome", "Tomo"],
+    ["Cape", "Capa"],
+    ["Helmet", "Casco"],
+    ["Hood", "Capucha"],
+    ["Armor", "Armadura"],
+    ["Jacket", "Chaqueta"],
+    ["Shoes", "Zapatos"],
+    ["Boots", "Botas"],
+    ["Robe", "Tunica"],
+    ["Refine", "Refina"]
+  ]
+};
 
 const inventory = loadInventory();
 const routeSettings = loadRouteSettings();
+let currentLanguage = loadLanguage();
 let recipes = [];
 let categoryOptions = [ALL_CATEGORIES];
 let itemIconMap = new Map();
@@ -192,6 +393,7 @@ const statusText = document.querySelector("#status-text");
 const statusSpinner = document.querySelector("#status-spinner");
 const reloadDataButton = document.querySelector("#reload-data-button");
 const analyzeButton = document.querySelector("#analyze-button");
+const languageSelect = document.querySelector("#language-select");
 const startingCitySelect = document.querySelector("#starting-city");
 const bestPlan = document.querySelector("#best-plan");
 const planList = document.querySelector("#plan-list");
@@ -203,11 +405,137 @@ const trackedCount = document.querySelector("#tracked-count");
 bootstrap();
 
 function bootstrap() {
+  applyStaticTranslations();
   bindEvents();
   loadCatalog();
 }
 
+function loadLanguage() {
+  const saved = localStorage.getItem(languageKey);
+  return saved === "es" ? "es" : "en";
+}
+
+function saveLanguage() {
+  localStorage.setItem(languageKey, currentLanguage);
+}
+
+function t(key) {
+  return UI_TEXT[currentLanguage]?.[key] || UI_TEXT.en[key] || key;
+}
+
+function displayName(name) {
+  if (currentLanguage === "en") return name;
+  const exact = EXACT_NAME_TRANSLATIONS.es[name];
+  if (exact) return exact;
+
+  let value = String(name || "");
+  TOKEN_TRANSLATIONS.es.forEach(([from, to]) => {
+    value = value.replaceAll(from, to);
+  });
+  value = value.replace(/\s+/g, " ").trim();
+  return value;
+}
+
+function displayCategory(category) {
+  switch (category) {
+    case ALL_CATEGORIES:
+      return currentLanguage === "es" ? "Todas" : "All";
+    case "Armas":
+      return currentLanguage === "es" ? "Armas" : "Weapons";
+    case "Armadura":
+      return currentLanguage === "es" ? "Armadura" : "Armor";
+    case "Accesorios":
+      return currentLanguage === "es" ? "Accesorios" : "Accessories";
+    case "Consumibles":
+      return currentLanguage === "es" ? "Consumibles" : "Consumables";
+    case "Monturas":
+      return currentLanguage === "es" ? "Monturas" : "Mounts";
+    case "Otros":
+      return currentLanguage === "es" ? "Otros" : "Other";
+    case "Refinado":
+    case "Refining":
+      return currentLanguage === "es" ? "Refinado" : "Refining";
+    default:
+      return category;
+  }
+}
+
+function displayStation(station) {
+  if (!station) {
+    return currentLanguage === "es" ? "Sin estacion" : "No station";
+  }
+
+  const stationMap = {
+    Smelter: { es: "Fundicion", en: "Smelter" },
+    Lumbermill: { es: "Aserradero", en: "Lumbermill" },
+    Weaver: { es: "Tejedor", en: "Weaver" },
+    Tanner: { es: "Curtidor", en: "Tanner" },
+    Stonecutter: { es: "Cantero", en: "Stonecutter" },
+    Toolmaker: { es: "Fabricante de herramientas", en: "Toolmaker" },
+    Forge: { es: "Forja", en: "Forge" },
+    "Arcane Forge": { es: "Forja arcana", en: "Arcane Forge" },
+    Cook: { es: "Cocinero", en: "Cook" },
+    "Crafting station": { es: "Estacion de crafteo", en: "Crafting station" },
+    "Refining Station": { es: "Estacion de refinado", en: "Refining Station" }
+  };
+  return stationMap[station]?.[currentLanguage] || station;
+}
+
+function applyStaticTranslations() {
+  document.title = currentLanguage === "es" ? "Planificador de Crafteo Albion" : "Albion Craft Planner";
+  languageSelect.value = currentLanguage;
+  document.querySelector(".language-picker span").textContent = t("language");
+  document.querySelector(".hero__copy h1").textContent = t("heroTitle");
+  document.querySelector(".hero__text").textContent = t("heroText");
+  document.querySelector("#best-tier").nextElementSibling.textContent = t("bestReachableTier");
+  document.querySelector("#plan-steps-count").nextElementSibling.textContent = t("bestPlanSteps");
+  document.querySelector("#reachable-count").nextElementSibling.textContent = t("reachableOptions");
+  document.querySelector(".inventory-card .section-label").textContent = t("inventory");
+  document.querySelector(".inventory-card h2").textContent = t("addOnlyWhatYouHave");
+  resetButton.textContent = t("reset");
+  document.querySelector(".inventory-card > .helper-text").textContent = t("inventoryHelp");
+  document.querySelector('label[for="material-picker-search"], .inventory-search span').textContent = t("searchAndAddMaterial");
+  materialPickerSearch.placeholder = t("materialSearchPlaceholder");
+  document.querySelector(".bulk-input span").textContent = t("quickPaste");
+  bulkInput.placeholder = currentLanguage === "es" ? "Ejemplo:\nIron Ore=80\nBronze Bar=40\nPine Planks=24" : "Example:\nIron Ore=80\nBronze Bar=40\nPine Planks=24";
+  applyBulkButton.textContent = t("applyInventory");
+  document.querySelector(".inventory-current-header .section-label").textContent = t("current");
+  document.querySelector(".inventory-current-header h2").textContent = t("yourInventory");
+  document.querySelector(".results-stack .card .section-label").textContent = t("plan");
+  document.querySelector(".results-stack .card h2").textContent = t("bestRecommendedChain");
+  analyzeButton.textContent = plannerRunning ? (currentLanguage === "es" ? "Analizando..." : "Analyzing...") : t("analyzeRecipes");
+  reloadDataButton.textContent = t("reloadPage");
+  document.querySelector('.planner-controls__field span').textContent = t("startingCity");
+  document.querySelectorAll(".results-stack .card .section-label")[1].textContent = t("options");
+  document.querySelectorAll(".results-stack .card h2")[1].textContent = t("reachableAlternatives");
+  document.querySelector('.filters label span').textContent = t("searchTarget");
+  searchInput.placeholder = t("targetSearchPlaceholder");
+  document.querySelectorAll('.filters label span')[1].textContent = t("category");
+  document.querySelector(".results-stack .card .helper-text").textContent = t("recommendationsHelp");
+  document.querySelectorAll(".results-stack .card .section-label")[2].textContent = t("target");
+  document.querySelectorAll(".results-stack .card h2")[2].textContent = t("targetIntro");
+  document.querySelectorAll(".results-stack .card .helper-text")[1].textContent = t("targetHelp");
+  document.querySelector(".target-picker .inventory-search span").textContent = t("searchTargetItem");
+  targetPickerSearch.placeholder = t("targetSearchPlaceholder");
+  document.querySelector(".target-builder__controls span").textContent = t("desiredAmount");
+  analyzeTargetButton.textContent = targetPlannerRunning ? (currentLanguage === "es" ? "Analizando..." : "Analyzing...") : t("analyzeTarget");
+  if (!selectedTargetName) {
+    selectedTarget.textContent = t("noTargetSelected");
+  }
+}
+
 function bindEvents() {
+  languageSelect.addEventListener("change", () => {
+    currentLanguage = languageSelect.value === "es" ? "es" : "en";
+    saveLanguage();
+    applyStaticTranslations();
+    renderCategoryOptions();
+    renderMaterialPicker();
+    renderTargetPicker();
+    renderSelectedTarget();
+    renderInventory();
+    renderPlanner(false);
+  });
   inventoryList.addEventListener("input", handleInventoryInput);
   inventoryList.addEventListener("change", handleInventoryCommit);
   inventoryList.addEventListener("click", handleInventoryRemove);
@@ -328,11 +656,11 @@ function handleInventoryRemove(event) {
 }
 
 function loadCatalog() {
-  setStatus("Loading exact local catalog...");
+  setStatus(currentLanguage === "es" ? "Cargando catalogo local exacto..." : "Loading exact local catalog...");
 
   const localCatalog = window.__ALBION_CATALOG__;
   if (!localCatalog || !Array.isArray(localCatalog.recipes)) {
-    setStatus("Local catalog not found.");
+    setStatus(currentLanguage === "es" ? "No se encontro el catalogo local." : "Local catalog not found.");
     return;
   }
 
@@ -359,12 +687,15 @@ function loadCatalog() {
   renderMaterialPicker();
   renderTargetPicker();
   renderSelectedTarget();
-  targetPlan.innerHTML = `<p class="helper-text">Select a target item and click Analyze Target to see the required chain.</p>`;
+  targetPlan.innerHTML = `<p class="helper-text">${currentLanguage === "es" ? "Selecciona un objeto objetivo y pulsa Analizar objetivo para ver la cadena necesaria." : "Select a target item and click Analyze Target to see the required chain."}</p>`;
   renderCategoryOptions();
   renderPlanner(false);
+  applyStaticTranslations();
 
   setStatus(
-    `Exact local catalog loaded (${localCatalog.recipes.length} exact recipes${generatedAt ? `, generated ${generatedAt}` : ""}).`
+    currentLanguage === "es"
+      ? `Catalogo local exacto cargado (${localCatalog.recipes.length} recetas exactas${generatedAt ? `, generado ${generatedAt}` : ""}).`
+      : `Exact local catalog loaded (${localCatalog.recipes.length} exact recipes${generatedAt ? `, generated ${generatedAt}` : ""}).`
   );
 }
 
@@ -624,21 +955,22 @@ function renderInventory() {
     const input = node.querySelector(".inventory-current-item__input");
     const removeButton = node.querySelector(".inventory-current-item__remove");
 
-    node.querySelector(".inventory-current-item__name").textContent = name;
-    node.querySelector(".inventory-current-item__meta").textContent = `Current amount: ${inventory[name] || 0}`;
+    node.querySelector(".inventory-current-item__name").textContent = displayName(name);
+    node.querySelector(".inventory-current-item__meta").textContent = `${currentLanguage === "es" ? "Cantidad actual" : "Current amount"}: ${inventory[name] || 0}`;
     input.dataset.material = name;
     input.value = inventory[name] || 0;
     removeButton.dataset.material = name;
+    removeButton.textContent = t("remove");
 
     hydrateIcon(node.querySelector(".item-avatar"), name);
     inventoryList.appendChild(node);
   });
 
   if (!names.length) {
-    inventoryList.innerHTML = `<p class="helper-text">You have not added materials yet.</p>`;
+    inventoryList.innerHTML = `<p class="helper-text">${currentLanguage === "es" ? "Aun no has anadido materiales." : "You have not added materials yet."}</p>`;
   }
 
-  trackedCount.textContent = `${Object.values(inventory).filter((amount) => amount > 0).length} materials`;
+  trackedCount.textContent = `${Object.values(inventory).filter((amount) => amount > 0).length} ${currentLanguage === "es" ? "materiales" : "materials"}`;
 }
 
 function renderMaterialPicker() {
@@ -662,8 +994,13 @@ function renderMaterialPicker() {
     const button = node.querySelector(".picker-card__button");
     const amount = inventory[name] || 0;
 
-    node.querySelector(".picker-card__name").textContent = name;
-    node.querySelector(".picker-card__meta").textContent = amount > 0 ? `In inventory: ${amount}` : "Not added yet";
+    node.querySelector(".picker-card__name").textContent = displayName(name);
+    node.querySelector(".picker-card__meta").textContent =
+      amount > 0
+        ? `${currentLanguage === "es" ? "En inventario" : "In inventory"}: ${amount}`
+        : currentLanguage === "es"
+          ? "Aun no anadido"
+          : "Not added yet";
     input.dataset.material = name;
     button.dataset.material = name;
 
@@ -672,7 +1009,7 @@ function renderMaterialPicker() {
   });
 
   if (!names.length) {
-    materialPickerResults.innerHTML = `<p class="helper-text">No materials found with that name.</p>`;
+    materialPickerResults.innerHTML = `<p class="helper-text">${currentLanguage === "es" ? "No se han encontrado materiales con ese nombre." : "No materials found with that name."}</p>`;
   }
 }
 
@@ -704,7 +1041,7 @@ function handleTargetPickerSelect(event) {
 
 function renderCategoryOptions() {
   categoryFilter.innerHTML = categoryOptions
-    .map((option) => `<option value="${option}">${translateCategory(option)}</option>`)
+    .map((option) => `<option value="${option}">${displayCategory(option)}</option>`)
     .join("");
 }
 
@@ -729,27 +1066,31 @@ function renderTargetPicker() {
     const button = node.querySelector(".picker-card__button");
     const recipe = getPrimaryRecipeForName(name);
 
-    node.querySelector(".picker-card__name").textContent = name;
+    node.querySelector(".picker-card__name").textContent = displayName(name);
     node.querySelector(".picker-card__meta").textContent = recipe
-      ? `${translateCategory(recipe.category)} | T${parseTier(recipe.tier)}`
-      : "Craft target";
+      ? `${displayCategory(recipe.category)} | T${parseTier(recipe.tier)}`
+      : currentLanguage === "es"
+        ? "Objetivo de crafteo"
+        : "Craft target";
     input.remove();
     button.dataset.material = name;
-    button.textContent = selectedTargetName === name ? "Selected" : "Select";
+    button.textContent = selectedTargetName === name
+      ? currentLanguage === "es" ? "Seleccionado" : "Selected"
+      : currentLanguage === "es" ? "Seleccionar" : "Select";
 
     hydrateIcon(node.querySelector(".item-avatar"), name, recipe?.outputId);
     targetPickerResults.appendChild(node);
   });
 
   if (!names.length) {
-    targetPickerResults.innerHTML = `<p class="helper-text">No targets found with that name.</p>`;
+    targetPickerResults.innerHTML = `<p class="helper-text">${currentLanguage === "es" ? "No se han encontrado objetivos con ese nombre." : "No targets found with that name."}</p>`;
   }
 }
 
 function renderSelectedTarget() {
   if (!selectedTargetName) {
     selectedTarget.className = "selected-target helper-text";
-    selectedTarget.innerHTML = "No target selected yet.";
+    selectedTarget.innerHTML = t("noTargetSelected");
     setTargetPlannerRunning(false);
     return;
   }
@@ -762,8 +1103,8 @@ function renderSelectedTarget() {
       <span class="item-avatar__fallback"></span>
     </span>
     <div class="selected-target__content">
-      <h3 class="selected-target__name">${selectedTargetName}</h3>
-      <p class="selected-target__meta">${recipe ? `${translateCategory(recipe.category)} | T${parseTier(recipe.tier)} | ${recipe.craftedAt || "No station"}` : "Craft target"}</p>
+      <h3 class="selected-target__name">${displayName(selectedTargetName)}</h3>
+      <p class="selected-target__meta">${recipe ? `${displayCategory(recipe.category)} | T${parseTier(recipe.tier)} | ${displayStation(recipe.craftedAt)}` : currentLanguage === "es" ? "Objetivo de crafteo" : "Craft target"}</p>
     </div>
   `;
   hydrateIcon(selectedTarget.querySelector(".item-avatar"), selectedTargetName, recipe?.outputId);
@@ -781,7 +1122,7 @@ async function renderPlanner(forceCompute = false) {
       plannerInventoryKey = inventoryKey;
     }
     plannerDirty = false;
-    setStatus(`Analysis complete. Found ${plannerCache.length} reachable option(s).`);
+    setStatus(currentLanguage === "es" ? `Analisis completo. Se han encontrado ${plannerCache.length} opcion(es) alcanzables.` : `Analysis complete. Found ${plannerCache.length} reachable option(s).`);
   }
 
   const search = searchInput.value.trim().toLowerCase();
@@ -817,9 +1158,9 @@ function schedulePlannerRender(immediate = false) {
 function markPlannerDirty() {
   plannerDirty = true;
   if (selectedTargetName) {
-    targetPlan.innerHTML = `<p class="helper-text">Inventory updated. Run Analyze Target again to refresh the requirement plan.</p>`;
+    targetPlan.innerHTML = `<p class="helper-text">${currentLanguage === "es" ? "Inventario actualizado. Ejecuta Analizar objetivo otra vez para refrescar el plan." : "Inventory updated. Run Analyze Target again to refresh the requirement plan."}</p>`;
   }
-  setStatus("Inventory updated. Click Analyze Recipes when you are ready.");
+  setStatus(currentLanguage === "es" ? "Inventario actualizado. Pulsa Analizar recetas cuando quieras." : "Inventory updated. Click Analyze Recipes when you are ready.");
 }
 
 function scheduleMaterialPickerRefresh(immediate = false) {
@@ -847,12 +1188,12 @@ function renderBestPlan(plan) {
       <article class="plan-card">
         <div class="plan-card__top">
           <div>
-            <p class="plan-card__category">Ready to analyze</p>
-            <h3 class="plan-card__name">Add all your materials first, then run the planner</h3>
+            <p class="plan-card__category">${currentLanguage === "es" ? "Listo para analizar" : "Ready to analyze"}</p>
+            <h3 class="plan-card__name">${currentLanguage === "es" ? "Anade primero todos tus materiales y luego ejecuta el planificador" : "Add all your materials first, then run the planner"}</h3>
           </div>
-          <span class="plan-card__badge">Waiting</span>
+          <span class="plan-card__badge">${currentLanguage === "es" ? "Esperando" : "Waiting"}</span>
         </div>
-        <p class="plan-card__meta">The planner is paused. Click Analyze Recipes to calculate recommendations.</p>
+        <p class="plan-card__meta">${currentLanguage === "es" ? "El planificador esta en pausa. Pulsa Analizar recetas para calcular recomendaciones." : "The planner is paused. Click Analyze Recipes to calculate recommendations."}</p>
       </article>
     `;
     bestTier.textContent = "-";
@@ -868,12 +1209,12 @@ function renderBestPlan(plan) {
       <article class="plan-card plan-card--blocked">
         <div class="plan-card__top">
           <div>
-            <p class="plan-card__category">No plan</p>
-            <h3 class="plan-card__name">I cannot find a complete chain with the current inventory</h3>
+            <p class="plan-card__category">${currentLanguage === "es" ? "Sin plan" : "No plan"}</p>
+            <h3 class="plan-card__name">${currentLanguage === "es" ? "No puedo encontrar una cadena completa con el inventario actual" : "I cannot find a complete chain with the current inventory"}</h3>
           </div>
-          <span class="plan-card__badge">0 options</span>
+          <span class="plan-card__badge">0 ${currentLanguage === "es" ? "opciones" : "options"}</span>
         </div>
-        <p class="plan-card__meta">Try adding refined resources or base raw materials such as Iron Ore, Pine Logs, Flax or Thin Hide.</p>
+        <p class="plan-card__meta">${currentLanguage === "es" ? "Prueba a anadir recursos refinados o materias primas base como mineral de hierro, troncos de pino, lino o piel fina." : "Try adding refined resources or base raw materials such as Iron Ore, Pine Logs, Flax or Thin Hide."}</p>
       </article>
     `;
     bestTier.textContent = "-";
@@ -892,14 +1233,14 @@ function renderBestPlan(plan) {
 
 function renderPlanList(plans) {
   if (plannerDirty) {
-    planList.innerHTML = `<p class="helper-text">Analysis is paused until you click Analyze Recipes.</p>`;
+    planList.innerHTML = `<p class="helper-text">${currentLanguage === "es" ? "El analisis esta en pausa hasta que pulses Analizar recetas." : "Analysis is paused until you click Analyze Recipes."}</p>`;
     return;
   }
 
   planList.innerHTML = "";
 
   if (!plans.length) {
-    planList.innerHTML = `<p class="helper-text">There are no reachable alternatives with the current filters.</p>`;
+    planList.innerHTML = `<p class="helper-text">${currentLanguage === "es" ? "No hay alternativas alcanzables con los filtros actuales." : "There are no reachable alternatives with the current filters."}</p>`;
     return;
   }
 
@@ -916,17 +1257,19 @@ function buildPlanNode(plan) {
   const notes = node.querySelector(".plan-card__notes");
 
   node.querySelector(".plan-card__category").textContent =
-    `${translateCategory(plan.recipe.category)} | T${parseTier(plan.recipe.tier)} | ${plan.recipe.craftedAt || "No station"}`;
-  node.querySelector(".plan-card__name").textContent = plan.recipe.outputName;
-  node.querySelector(".plan-card__badge").textContent = plan.badgeText || `x${plan.outputCount} | ${plan.steps.length} steps`;
+    `${displayCategory(plan.recipe.category)} | T${parseTier(plan.recipe.tier)} | ${displayStation(plan.recipe.craftedAt)}`;
+  node.querySelector(".plan-card__name").textContent = displayName(plan.recipe.outputName);
+  node.querySelector(".plan-card__badge").textContent = plan.badgeText || `x${plan.outputCount} | ${plan.steps.length} ${currentLanguage === "es" ? "pasos" : "steps"}`;
   node.querySelector(".plan-card__meta").textContent =
-    plan.metaText || `Reachable target with your current inventory. You can make it exactly ${plan.outputCount} time(s) with this inventory.`;
+    plan.metaText || (currentLanguage === "es"
+      ? `Objetivo alcanzable con tu inventario actual. Puedes hacerlo exactamente ${plan.outputCount} vez/veces con este inventario.`
+      : `Reachable target with your current inventory. You can make it exactly ${plan.outputCount} time(s) with this inventory.`);
   stepsList.innerHTML = plan.steps
     .map((step) => `<li>${step}</li>`)
     .join("");
   notes.textContent =
-    plan.notesText || `Final source: ${plan.recipe.source}. Consumed materials: ${summarizeConsumed(plan.consumed)}.`;
-  node.querySelector(".plan-card__toggle").textContent = "";
+    plan.notesText || `${currentLanguage === "es" ? "Fuente final" : "Final source"}: ${displaySource(plan.recipe.source)}. ${currentLanguage === "es" ? "Materiales consumidos" : "Consumed materials"}: ${summarizeConsumed(plan.consumed)}.`;
+  node.querySelector(".plan-card__toggle").textContent = node.open ? t("hideSteps") : t("showSteps");
 
   if (plan.detailData) {
     stepsList.hidden = true;
@@ -967,10 +1310,10 @@ async function renderTargetPlan(targetName, desiredAmount) {
       <article class="plan-card plan-card--blocked">
         <div class="plan-card__top">
           <div>
-            <p class="plan-card__category">Target</p>
-            <h3 class="plan-card__name">I cannot find a recipe for that target</h3>
+            <p class="plan-card__category">${currentLanguage === "es" ? "Objetivo" : "Target"}</p>
+            <h3 class="plan-card__name">${currentLanguage === "es" ? "No puedo encontrar una receta para ese objetivo" : "I cannot find a recipe for that target"}</h3>
           </div>
-          <span class="plan-card__badge">Unavailable</span>
+          <span class="plan-card__badge">${currentLanguage === "es" ? "No disponible" : "Unavailable"}</span>
         </div>
       </article>
     `;
@@ -982,13 +1325,13 @@ async function renderTargetPlan(targetName, desiredAmount) {
     outputCount: analysis.outputCount,
     steps: analysis.stepEntries.map((entry) => describeStep(entry.recipe, entry.runs)),
     consumed: analysis.consumed,
-    badgeText: analysis.resourceList.length ? "Missing resources" : "Ready path",
+    badgeText: analysis.resourceList.length ? (currentLanguage === "es" ? "Faltan recursos" : "Missing resources") : (currentLanguage === "es" ? "Ruta lista" : "Ready path"),
     metaText: analysis.resourceList.length
-      ? `You do not have enough materials yet. This plan shows the exact steps plus what is still missing for ${analysis.outputCount} unit(s).`
-      : `You already have enough resources to craft ${analysis.outputCount} unit(s) with this chain.`,
+      ? (currentLanguage === "es" ? `Todavia no tienes materiales suficientes. Este plan muestra los pasos exactos y lo que falta para ${analysis.outputCount} unidad(es).` : `You do not have enough materials yet. This plan shows the exact steps plus what is still missing for ${analysis.outputCount} unit(s).`)
+      : (currentLanguage === "es" ? `Ya tienes recursos suficientes para craftear ${analysis.outputCount} unidad(es) con esta cadena.` : `You already have enough resources to craft ${analysis.outputCount} unit(s) with this chain.`),
     notesText: analysis.resourceList.length
-      ? `Missing resources: ${analysis.resourceList.map(([name, amount]) => `${name} x${amount}`).join(", ")}.`
-      : `No extra resources are missing. Consumed materials: ${summarizeConsumed(analysis.consumed)}.`,
+      ? `${currentLanguage === "es" ? "Recursos faltantes" : "Missing resources"}: ${analysis.resourceList.map(([name, amount]) => `${displayName(name)} x${amount}`).join(", ")}.`
+      : `${currentLanguage === "es" ? "No faltan recursos extra" : "No extra resources are missing"}. ${currentLanguage === "es" ? "Materiales consumidos" : "Consumed materials"}: ${summarizeConsumed(analysis.consumed)}.`,
     detailData: {
       stepEntries: analysis.stepEntries,
       resourceList: analysis.resourceList,
@@ -1023,8 +1366,8 @@ function buildReachablePlans(sourceInventory) {
       detailData: {
         stepEntries: aggregateStepObjects(result.steps),
         resourceList: toNamedAmountList(consumed),
-        resourceTitle: "Consumed materials",
-        emptyResourceText: "This route uses the materials already present in your inventory.",
+        resourceTitle: currentLanguage === "es" ? "Materiales consumidos" : "Consumed materials",
+        emptyResourceText: currentLanguage === "es" ? "Esta ruta usa los materiales que ya estan en tu inventario." : "This route uses the materials already present in your inventory.",
         consumed
       }
     });
@@ -1046,8 +1389,8 @@ function buildReachablePlans(sourceInventory) {
         detailData: {
           stepEntries: aggregateStepObjects(result.steps),
           resourceList: toNamedAmountList(consumed),
-          resourceTitle: "Consumed materials",
-          emptyResourceText: "This route uses the materials already present in your inventory.",
+          resourceTitle: currentLanguage === "es" ? "Materiales consumidos" : "Consumed materials",
+          emptyResourceText: currentLanguage === "es" ? "Esta ruta usa los materiales que ya estan en tu inventario." : "This route uses the materials already present in your inventory.",
           consumed
         }
       });
@@ -1605,7 +1948,7 @@ function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourc
 
   const stepsSection = document.createElement("section");
   stepsSection.className = "target-plan-section";
-  stepsSection.innerHTML = `<h3 class="target-plan-section__title">Step by step</h3>`;
+  stepsSection.innerHTML = `<h3 class="target-plan-section__title">${currentLanguage === "es" ? "Paso a paso" : "Step by step"}</h3>`;
 
   if (stepEntries.length) {
     const list = document.createElement("div");
@@ -1615,7 +1958,7 @@ function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourc
     });
     stepsSection.appendChild(list);
   } else {
-    stepsSection.innerHTML += `<p class="helper-text">No crafting steps were generated for this target.</p>`;
+    stepsSection.innerHTML += `<p class="helper-text">${currentLanguage === "es" ? "No se generaron pasos de crafteo para este objetivo." : "No crafting steps were generated for this target."}</p>`;
   }
 
   wrapper.appendChild(stepsSection);
@@ -1640,13 +1983,13 @@ function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourc
   if (savingsList.length) {
     const savingsSection = document.createElement("section");
     savingsSection.className = "target-plan-section";
-    savingsSection.innerHTML = `<h3 class="target-plan-section__title">Estimated best city savings</h3>`;
+    savingsSection.innerHTML = `<h3 class="target-plan-section__title">${currentLanguage === "es" ? "Ahorro estimado por mejor ciudad" : "Estimated best city savings"}</h3>`;
 
     const grid = document.createElement("div");
     grid.className = "missing-grid";
     savingsList.forEach(([name, entry]) => {
       grid.appendChild(
-        buildMissingItem(name, entry.amount, `Estimated return: x${formatEstimatedAmount(entry.amount)} in ${entry.city}`)
+        buildMissingItem(name, entry.amount, `${currentLanguage === "es" ? "Retorno estimado" : "Estimated return"}: x${formatEstimatedAmount(entry.amount)} ${currentLanguage === "es" ? "en" : "in"} ${entry.city}`)
       );
     });
     savingsSection.appendChild(grid);
@@ -1656,7 +1999,7 @@ function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourc
   if (travelAdvice.length) {
     const travelSection = document.createElement("section");
     travelSection.className = "target-plan-section";
-    travelSection.innerHTML = `<h3 class="target-plan-section__title">Travel advice</h3>`;
+    travelSection.innerHTML = `<h3 class="target-plan-section__title">${currentLanguage === "es" ? "Consejos de viaje" : "Travel advice"}</h3>`;
 
     const list = document.createElement("div");
     list.className = "target-step-list";
@@ -1673,21 +2016,21 @@ function buildPlanDetails(stepEntries, resourceList, resourceTitle, emptyResourc
 function buildStepCard(entry) {
   const template = document.querySelector("#step-card-template");
   const node = template.content.firstElementChild.cloneNode(true);
-  const actionLabel = entry.recipe.plannerType === "refine" ? "Refine" : "Craft";
+  const actionLabel = entry.recipe.plannerType === "refine" ? (currentLanguage === "es" ? "Refina" : "Refine") : (currentLanguage === "es" ? "Craftea" : "Craft");
   const outputAmount = entry.recipe.output * entry.runs;
   const ingredientText = Object.entries(entry.recipe.ingredients)
-    .map(([name, amount]) => `${name} x${amount * entry.runs}`)
+    .map(([name, amount]) => `${displayName(name)} x${amount * entry.runs}`)
     .join(", ");
 
-  node.querySelector(".step-card__eyebrow").textContent = `${actionLabel} at ${entry.recipe.craftedAt || "the right station"}`;
-  node.querySelector(".step-card__name").textContent = entry.recipe.outputName;
+  node.querySelector(".step-card__eyebrow").textContent = `${actionLabel} ${currentLanguage === "es" ? "en" : "at"} ${displayStation(entry.recipe.craftedAt || "") || (currentLanguage === "es" ? "la estacion correcta" : "the right station")}`;
+  node.querySelector(".step-card__name").textContent = displayName(entry.recipe.outputName);
   node.querySelector(".step-card__meta").textContent = ingredientText
-    ? `Use ${ingredientText}.`
-    : "No ingredients listed.";
+    ? `${currentLanguage === "es" ? "Usa" : "Use"} ${ingredientText}.`
+    : currentLanguage === "es" ? "No hay ingredientes listados." : "No ingredients listed.";
   if (entry.recipe.plannerType === "refine") {
     const bonusCity = getBestRefiningCityForRecipe(entry.recipe);
     if (bonusCity) {
-      node.querySelector(".step-card__meta").textContent += ` Best refining city: ${bonusCity}.`;
+      node.querySelector(".step-card__meta").textContent += ` ${currentLanguage === "es" ? "Mejor ciudad de refinado" : "Best refining city"}: ${bonusCity}.`;
     }
   }
   node.querySelector(".step-card__amount").textContent = `x${outputAmount}`;
@@ -1696,11 +2039,11 @@ function buildStepCard(entry) {
   return node;
 }
 
-function buildMissingItem(name, amount, metaText = `Still needed: x${formatEstimatedAmount(amount)}`) {
+function buildMissingItem(name, amount, metaText = `${currentLanguage === "es" ? "Aun hace falta" : "Still needed"}: x${formatEstimatedAmount(amount)}`) {
   const template = document.querySelector("#missing-item-template");
   const node = template.content.firstElementChild.cloneNode(true);
 
-  node.querySelector(".missing-item__name").textContent = name;
+  node.querySelector(".missing-item__name").textContent = displayName(name);
   node.querySelector(".missing-item__meta").textContent = metaText;
   hydrateIcon(node.querySelector(".item-avatar"), name);
   return node;
@@ -1720,11 +2063,11 @@ function buildTravelAdvice(stepEntries, consumedMap = {}) {
     const travelHops = Math.max(0, travelPath.length - 1);
 
     if (group.refineOutputs.length) {
-      tasks.push(`refine ${group.refineOutputs.join(", ")}`);
+      tasks.push(`${currentLanguage === "es" ? "refinar" : "refine"} ${group.refineOutputs.map(displayName).join(", ")}`);
     }
     if (group.craftOutputs.length) {
-      const stationText = group.craftStations.length ? ` at ${group.craftStations.join(" / ")}` : "";
-      tasks.push(`craft ${group.craftOutputs.join(", ")}${stationText}`);
+      const stationText = group.craftStations.length ? ` ${currentLanguage === "es" ? "en" : "at"} ${group.craftStations.map(displayStation).join(" / ")}` : "";
+      tasks.push(`${currentLanguage === "es" ? "craftear" : "craft"} ${group.craftOutputs.map(displayName).join(", ")}${stationText}`);
     }
 
     previousCity = group.destination;
@@ -1733,7 +2076,7 @@ function buildTravelAdvice(stepEntries, consumedMap = {}) {
       outputName,
       outputId,
       eyebrow: buildTravelEyebrow(group.destination, travelPath, index === 0),
-      amountLabel: travelHops ? `${travelHops} hop${travelHops === 1 ? "" : "s"}` : "Here",
+      amountLabel: travelHops ? `${travelHops} ${currentLanguage === "es" ? "salto" : "hop"}${travelHops === 1 ? "" : "s"}` : currentLanguage === "es" ? "Aqui" : "Here",
       message: buildTravelMessage(group.destination, tasks, extraRefines, index === 0, travelPath)
     };
   });
@@ -1921,27 +2264,27 @@ function appendTravelTask(stop, entry) {
 
 function buildTravelEyebrow(destination, travelPath, isFirstStop = false) {
   if (isFirstStop) {
-    return `Start in ${destination}`;
+    return currentLanguage === "es" ? `Empieza en ${destination}` : `Start in ${destination}`;
   }
   if (travelPath.length > 1) {
     const viaCities = travelPath.slice(1, -1);
     if (viaCities.length) {
-      return `Go to ${destination} via ${viaCities.join(" -> ")}`;
+      return currentLanguage === "es" ? `Ve a ${destination} pasando por ${viaCities.join(" -> ")}` : `Go to ${destination} via ${viaCities.join(" -> ")}`;
     }
-    return `Go to ${destination}`;
+    return currentLanguage === "es" ? `Ve a ${destination}` : `Go to ${destination}`;
   }
-  return `Stay in ${destination}`;
+  return currentLanguage === "es" ? `Quedate en ${destination}` : `Stay in ${destination}`;
 }
 
 function buildTravelMessage(destination, tasks, extraRefines, isFirstStop = false, travelPath = [destination]) {
   const viaCities = travelPath.slice(1, -1);
   const movementText = travelPath.length > 1
-    ? `${isFirstStop ? `Leave ${travelPath[0]}` : "Then go"} to ${destination}${viaCities.length ? ` via ${viaCities.join(" -> ")}` : ""}`
-    : `${isFirstStop ? `Start in ${destination}` : `Stay in ${destination}`}`;
-  const base = `${movementText} to ${tasks.join(" and ")}.`;
+    ? `${isFirstStop ? (currentLanguage === "es" ? `Sal de ${travelPath[0]}` : `Leave ${travelPath[0]}`) : currentLanguage === "es" ? "Luego ve" : "Then go"} ${currentLanguage === "es" ? "a" : "to"} ${destination}${viaCities.length ? ` ${currentLanguage === "es" ? "pasando por" : "via"} ${viaCities.join(" -> ")}` : ""}`
+    : `${isFirstStop ? (currentLanguage === "es" ? `Empieza en ${destination}` : `Start in ${destination}`) : currentLanguage === "es" ? `Quedate en ${destination}` : `Stay in ${destination}`}`;
+  const base = `${movementText} ${currentLanguage === "es" ? "para" : "to"} ${tasks.join(currentLanguage === "es" ? " y " : " and ")}.`;
   if (!extraRefines.length) return base;
 
-  return `${base} While you are there, you could also refine spare ${extraRefines.join(", ")}.`;
+  return `${base} ${currentLanguage === "es" ? "Ya que estas alli, tambien podrias refinar sobrantes de" : "While you are there, you could also refine spare"} ${extraRefines.join(", ")}.`;
 }
 
 function findShortestCityPath(start, end) {
@@ -1980,7 +2323,7 @@ function collectExtraRefiningSuggestions(destination, spareInventory) {
     .filter((name) => (spareInventory[name] || 0) > 0)
     .sort((left, right) => left.localeCompare(right))
     .slice(0, 3)
-    .map((name) => `${name} x${formatEstimatedAmount(spareInventory[name])}`);
+    .map((name) => `${displayName(name)} x${formatEstimatedAmount(spareInventory[name])}`);
 
   return candidates;
 }
@@ -2003,7 +2346,7 @@ function buildTravelCard(entry) {
   const node = template.content.firstElementChild.cloneNode(true);
 
   node.querySelector(".step-card__eyebrow").textContent = entry.eyebrow;
-  node.querySelector(".step-card__name").textContent = entry.outputName;
+  node.querySelector(".step-card__name").textContent = displayName(entry.outputName);
   node.querySelector(".step-card__meta").textContent = entry.message;
   node.querySelector(".step-card__amount").textContent = entry.amountLabel;
 
@@ -2022,9 +2365,9 @@ function summarizeConsumed(consumed) {
     .filter(([, amount]) => amount > 0)
     .sort((left, right) => right[1] - left[1])
     .slice(0, 5)
-    .map(([name, amount]) => `${name} x${amount}`);
+    .map(([name, amount]) => `${displayName(name)} x${amount}`);
 
-  return entries.length ? entries.join(", ") : "no consumption";
+  return entries.length ? entries.join(", ") : currentLanguage === "es" ? "sin consumo" : "no consumption";
 }
 
 function collectConsumed(before, after) {
@@ -2039,13 +2382,13 @@ function collectConsumed(before, after) {
 }
 
 function describeStep(recipe, runs) {
-  const prefix = recipe.plannerType === "refine" ? "Refine" : "Craft";
+  const prefix = recipe.plannerType === "refine" ? (currentLanguage === "es" ? "Refina" : "Refine") : (currentLanguage === "es" ? "Craftea" : "Craft");
   const quantity = recipe.output * runs;
   const ingredients = Object.entries(recipe.ingredients)
-    .map(([name, amount]) => `${name} x${amount * runs}`)
+    .map(([name, amount]) => `${displayName(name)} x${amount * runs}`)
     .join(", ");
 
-  return `${prefix} ${recipe.outputName} x${quantity} at ${recipe.craftedAt || "the right station"} using ${ingredients}.`;
+  return `${prefix} ${displayName(recipe.outputName)} x${quantity} ${currentLanguage === "es" ? "en" : "at"} ${displayStation(recipe.craftedAt) || (currentLanguage === "es" ? "la estacion correcta" : "the right station")} ${currentLanguage === "es" ? "usando" : "using"} ${ingredients}.`;
 }
 
 function collapseSteps(steps) {
@@ -2127,32 +2470,19 @@ function updateInventoryCard(material) {
 
   const meta = card.querySelector(".inventory-current-item__meta");
   if (meta) {
-    meta.textContent = `Current amount: ${inventory[material] || 0}`;
+    meta.textContent = `${currentLanguage === "es" ? "Cantidad actual" : "Current amount"}: ${inventory[material] || 0}`;
   }
 }
 
-function translateCategory(category) {
-  switch (category) {
-    case ALL_CATEGORIES:
-      return "All";
-    case "Armas":
-      return "Weapons";
-    case "Armadura":
-      return "Armor";
-    case "Accesorios":
-      return "Accessories";
-    case "Consumibles":
-      return "Consumables";
-    case "Monturas":
-      return "Mounts";
-    case "Otros":
-      return "Other";
-    case "Refinado":
-    case "Refining":
-      return "Refining";
-    default:
-      return category;
+function displaySource(source) {
+  if (!source) return currentLanguage === "es" ? "fuente desconocida" : "unknown source";
+  if (source === "Supplemental standard recipe") {
+    return currentLanguage === "es" ? "receta suplementaria estandar" : source;
   }
+  if (source === "Base refining rule") {
+    return currentLanguage === "es" ? "regla base de refinado" : source;
+  }
+  return source;
 }
 
 function setStatus(message) {
@@ -2164,7 +2494,7 @@ function setPlannerRunning(running, message = "") {
   statusSpinner.hidden = !running;
   analyzeButton.disabled = running;
   analyzeButton.classList.toggle("is-busy", running);
-  analyzeButton.textContent = running ? "Analyzing..." : "Analyze Recipes";
+  analyzeButton.textContent = running ? (currentLanguage === "es" ? "Analizando..." : "Analyzing...") : t("analyzeRecipes");
 
   if (message) {
     setStatus(message);
@@ -2175,7 +2505,7 @@ function setTargetPlannerRunning(running) {
   targetPlannerRunning = running;
   analyzeTargetButton.disabled = running || !selectedTargetName;
   analyzeTargetButton.classList.toggle("is-busy", running);
-  analyzeTargetButton.textContent = running ? "Analyzing..." : "Analyze Target";
+  analyzeTargetButton.textContent = running ? (currentLanguage === "es" ? "Analizando..." : "Analyzing...") : t("analyzeTarget");
 }
 
 function initializePlannerWorker(recipeList) {
@@ -2245,7 +2575,7 @@ async function analyzeInventoryWithWorker(sourceInventory, inventoryKey) {
       plannerCache = normalizeWorkerPlans(partialPlans);
       plannerInventoryKey = inventoryKey;
       plannerDirty = false;
-      setStatus(`Analyzing... first ${plannerCache.length} reachable option(s) ready.`);
+      setStatus(currentLanguage === "es" ? `Analizando... primeras ${plannerCache.length} opcion(es) alcanzables listas.` : `Analyzing... first ${plannerCache.length} reachable option(s) ready.`);
       renderPlanner(false);
     }
   );
@@ -2281,8 +2611,8 @@ async function analyzeTargetWithWorker(targetName, desiredAmount, sourceInventor
       consumed: collectConsumed(sourceInventory, result.stock),
       stepEntries: aggregateStepObjects(result.steps),
       resourceList: toNamedAmountList(result.missing),
-      resourceTitle: "Missing resources",
-      emptyResourceText: "You already have all the required resources in your inventory."
+      resourceTitle: currentLanguage === "es" ? "Recursos faltantes" : "Missing resources",
+      emptyResourceText: currentLanguage === "es" ? "Ya tienes todos los recursos necesarios en tu inventario." : "You already have all the required resources in your inventory."
     };
   }
 

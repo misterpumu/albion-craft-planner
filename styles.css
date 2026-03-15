@@ -114,6 +114,16 @@ h1 {
   gap: 14px;
 }
 
+.language-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.language-picker span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .hero__stat {
   padding: 18px;
   border-radius: 18px;
