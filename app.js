@@ -1377,8 +1377,9 @@ function collectSearchableTargets(recipeList) {
 
 async function startLiveInventoryScan() {
   if (ocrRunning) return;
-  if (!navigator.mediaDevices?.getDisplayMedia) {
-    setOcrStatus("Live screen capture is not available in this browser.");
+  const supportIssue = getLiveScanSupportIssue();
+  if (supportIssue) {
+    setOcrStatus(supportIssue);
     return;
   }
   if (!window.Tesseract) {
@@ -1417,7 +1418,7 @@ async function startLiveInventoryScan() {
     liveOcrTimer = window.setInterval(scanLiveInventoryFrame, 1800);
     window.setTimeout(scanLiveInventoryFrame, 900);
   } catch (error) {
-    setOcrStatus(`Live scan could not start: ${error instanceof Error ? error.message : String(error)}`);
+    setOcrStatus(formatLiveScanError(error));
     stopLiveInventoryScan("", true);
     return;
   } finally {
@@ -1427,6 +1428,38 @@ async function startLiveInventoryScan() {
       ocrStopButton.disabled = true;
     }
   }
+}
+
+function getLiveScanSupportIssue() {
+  if (!window.isSecureContext) {
+    return "Live scan needs a secure page. Open the HTTPS GitHub Pages URL directly.";
+  }
+  if (window.top !== window.self) {
+    return "Live scan may be blocked inside an embedded iframe. Open the tool directly in its own tab.";
+  }
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    return "This browser does not support screen sharing here. Try Chrome or Edge on the direct site URL.";
+  }
+  return "";
+}
+
+function formatLiveScanError(error) {
+  const name = error && typeof error === "object" && "name" in error ? String(error.name) : "";
+  const message = error instanceof Error ? error.message : String(error || "");
+
+  if (name === "NotAllowedError" || /permission|denied|allowed/i.test(message)) {
+    return "Screen sharing was blocked or cancelled. Click Start live scan again and allow sharing the Albion window or your screen.";
+  }
+  if (name === "NotFoundError" || /not found|available/i.test(message)) {
+    return "No screen or window source was selected. Choose the Albion window or your full screen when prompted.";
+  }
+  if (name === "InvalidStateError") {
+    return "The browser refused to start screen sharing in the current state. Reload the page and try again.";
+  }
+  if (name === "AbortError") {
+    return "Screen sharing was interrupted before it started. Try again.";
+  }
+  return `Live scan could not start: ${message || "unknown browser error"}`;
 }
 
 function stopLiveInventoryScan(message = "Live scan stopped.", silent = false) {
