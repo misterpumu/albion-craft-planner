@@ -175,6 +175,9 @@ let workerRequestCounter = 0;
 const workerRequests = new Map();
 let detectedOcrMatches = [];
 let ocrRunning = false;
+let liveOcrStream = null;
+let liveOcrTimer = null;
+let liveOcrFrameBusy = false;
 
 const inventoryList = document.querySelector("#inventory-list");
 const materialPickerSearch = document.querySelector("#material-picker-search");
@@ -187,10 +190,12 @@ const analyzeTargetButton = document.querySelector("#analyze-target-button");
 const targetPlan = document.querySelector("#target-plan");
 const bulkInput = document.querySelector("#bulk-input");
 const applyBulkButton = document.querySelector("#apply-bulk-button");
-const ocrFileInput = document.querySelector("#ocr-file-input");
 const ocrRunButton = document.querySelector("#ocr-run-button");
+const ocrStopButton = document.querySelector("#ocr-stop-button");
 const ocrImportButton = document.querySelector("#ocr-import-button");
 const ocrStatus = document.querySelector("#ocr-status");
+const ocrPreview = document.querySelector("#ocr-preview");
+const ocrPreviewEmpty = document.querySelector("#ocr-preview-empty");
 const ocrResults = document.querySelector("#ocr-results");
 const resetButton = document.querySelector("#reset-button");
 const searchInput = document.querySelector("#search-input");
@@ -270,7 +275,8 @@ function bindEvents() {
     markPlannerDirty();
   });
 
-  ocrRunButton.addEventListener("click", runInventoryOcr);
+  ocrRunButton.addEventListener("click", startLiveInventoryScan);
+  ocrStopButton.addEventListener("click", () => stopLiveInventoryScan("Live scan stopped."));
   ocrImportButton.addEventListener("click", importDetectedOcrMaterials);
 
   resetButton.addEventListener("click", () => {
@@ -1369,11 +1375,10 @@ function collectSearchableTargets(recipeList) {
     .sort((left, right) => left.localeCompare(right));
 }
 
-async function runInventoryOcr() {
+async function startLiveInventoryScan() {
   if (ocrRunning) return;
-  const file = ocrFileInput.files?.[0];
-  if (!file) {
-    setOcrStatus("Choose a screenshot first.");
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    setOcrStatus("Live screen capture is not available in this browser.");
     return;
   }
   if (!window.Tesseract) {
@@ -1383,47 +1388,103 @@ async function runInventoryOcr() {
 
   ocrRunning = true;
   ocrRunButton.disabled = true;
+  ocrStopButton.disabled = false;
   ocrImportButton.disabled = true;
   detectedOcrMatches = [];
   renderOcrResults();
-  setOcrStatus("Scanning visible text...");
+  setOcrStatus("Requesting screen share...");
 
   try {
-    const canvas = await buildOcrCanvas(file);
-    const result = await window.Tesseract.recognize(canvas, "eng", {
-      logger: (message) => {
-        if (message.status === "recognizing text") {
-          setOcrStatus(`Scanning visible text... ${Math.round((message.progress || 0) * 100)}%`);
-        }
-      }
+    liveOcrStream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        frameRate: { ideal: 8, max: 12 }
+      },
+      audio: false
     });
 
-    detectedOcrMatches = extractMaterialsFromOcr(result.data || {});
-    renderOcrResults();
-
-    if (detectedOcrMatches.length) {
-      setOcrStatus(`Detected ${detectedOcrMatches.length} material name(s). Import them and then set quantities manually.`);
-      ocrImportButton.disabled = false;
-    } else {
-      setOcrStatus("No clear material names found. Try a screenshot where the tooltip text is sharp and visible.");
+    const [videoTrack] = liveOcrStream.getVideoTracks();
+    if (videoTrack) {
+      videoTrack.addEventListener("ended", () => {
+        stopLiveInventoryScan("Screen sharing stopped.");
+      });
     }
+
+    ocrPreview.srcObject = liveOcrStream;
+    ocrPreview.hidden = false;
+    ocrPreviewEmpty.hidden = true;
+    await ocrPreview.play();
+    setOcrStatus("Live scan running. Hover item tooltips in Albion and wait a moment.");
+    liveOcrTimer = window.setInterval(scanLiveInventoryFrame, 1800);
+    window.setTimeout(scanLiveInventoryFrame, 900);
   } catch (error) {
-    setOcrStatus(`OCR failed: ${error instanceof Error ? error.message : String(error)}`);
+    setOcrStatus(`Live scan could not start: ${error instanceof Error ? error.message : String(error)}`);
+    stopLiveInventoryScan("", true);
+    return;
   } finally {
-    ocrRunning = false;
-    ocrRunButton.disabled = false;
+    if (!liveOcrStream) {
+      ocrRunning = false;
+      ocrRunButton.disabled = false;
+      ocrStopButton.disabled = true;
+    }
   }
 }
 
-async function buildOcrCanvas(file) {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(2.4, 2200 / Math.max(1, bitmap.width));
+function stopLiveInventoryScan(message = "Live scan stopped.", silent = false) {
+  if (liveOcrTimer) {
+    window.clearInterval(liveOcrTimer);
+    liveOcrTimer = null;
+  }
+  if (liveOcrStream) {
+    liveOcrStream.getTracks().forEach((track) => track.stop());
+    liveOcrStream = null;
+  }
+  if (ocrPreview.srcObject) {
+    ocrPreview.srcObject = null;
+  }
+  ocrPreview.hidden = true;
+  ocrPreviewEmpty.hidden = false;
+  ocrRunning = false;
+  liveOcrFrameBusy = false;
+  ocrRunButton.disabled = false;
+  ocrStopButton.disabled = true;
+  if (!silent) {
+    setOcrStatus(message);
+  }
+}
+
+async function scanLiveInventoryFrame() {
+  if (!liveOcrStream || liveOcrFrameBusy) return;
+  if (!ocrPreview.videoWidth || !ocrPreview.videoHeight) return;
+
+  liveOcrFrameBusy = true;
+
+  try {
+    const canvas = buildOcrCanvasFromVideo(ocrPreview);
+    const result = await window.Tesseract.recognize(canvas, "eng");
+    const nextMatches = extractMaterialsFromOcr(result.data || {});
+    mergeDetectedOcrMatches(nextMatches);
+    renderOcrResults();
+
+    if (detectedOcrMatches.length) {
+      ocrImportButton.disabled = false;
+      setOcrStatus(`Live scan running. Detected ${detectedOcrMatches.length} material name(s) so far.`);
+    } else {
+      setOcrStatus("Live scan running. Hover a resource until its tooltip text is clearly visible.");
+    }
+  } catch (error) {
+    setOcrStatus(`Live OCR frame failed: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    liveOcrFrameBusy = false;
+  }
+}
+
+function buildOcrCanvasFromVideo(video) {
+  const scale = Math.min(1.6, 1600 / Math.max(1, video.videoWidth));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+  canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
   const context = canvas.getContext("2d", { willReadFrequently: true });
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
@@ -1462,6 +1523,21 @@ function extractMaterialsFromOcr(ocrData) {
   return Array.from(matches.values())
     .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
     .slice(0, 16);
+}
+
+function mergeDetectedOcrMatches(nextMatches) {
+  const matchMap = new Map(detectedOcrMatches.map((entry) => [entry.name, entry]));
+
+  nextMatches.forEach((entry) => {
+    const current = matchMap.get(entry.name);
+    if (!current || entry.score > current.score) {
+      matchMap.set(entry.name, entry);
+    }
+  });
+
+  detectedOcrMatches = Array.from(matchMap.values())
+    .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
+    .slice(0, 24);
 }
 
 function buildOcrLines(words) {

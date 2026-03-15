@@ -64,22 +64,23 @@
         <section class="ocr-panel">
           <div class="card__header inventory-current-header">
             <div>
-              <p class="section-label">OCR</p>
-              <h2>Scan inventory tooltip</h2>
+              <p class="section-label">Live Scan</p>
+              <h2>Read tooltip names in real time</h2>
             </div>
           </div>
           <p class="helper-text">
-            Upload a screenshot where Albion shows the item name tooltip. The app will read visible text and add detected materials with amount 1 so you can adjust quantities manually.
+            Share the Albion window, hover items so the game tooltip becomes visible, and the app will try to read detected material names live. Imported materials are added with amount 1 so you can adjust quantities manually.
           </p>
-          <label class="bulk-input">
-            <span>Screenshot file</span>
-            <input id="ocr-file-input" type="file" accept="image/*">
-          </label>
           <div class="ocr-actions">
-            <button id="ocr-run-button" class="primary-button primary-button--compact" type="button">Scan inventory</button>
+            <button id="ocr-run-button" class="primary-button primary-button--compact" type="button">Start live scan</button>
+            <button id="ocr-stop-button" class="ghost-button" type="button" disabled>Stop scan</button>
             <button id="ocr-import-button" class="ghost-button" type="button" disabled>Import detected</button>
           </div>
-          <p id="ocr-status" class="helper-text">No screenshot scanned yet.</p>
+          <p id="ocr-status" class="helper-text">Live scan is idle.</p>
+          <div class="ocr-preview-shell">
+            <video id="ocr-preview" class="ocr-preview" autoplay muted playsinline hidden></video>
+            <p id="ocr-preview-empty" class="helper-text">No live window shared yet.</p>
+          </div>
           <div id="ocr-results" class="ocr-results"></div>
         </section>
 

@@ -451,6 +451,22 @@ textarea {
   overflow: auto;
 }
 
+.ocr-preview-shell {
+  min-height: 180px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+}
+
+.ocr-preview {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+
 .ocr-result {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
