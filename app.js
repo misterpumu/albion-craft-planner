@@ -503,7 +503,32 @@ function buildItemIconMap(recipeList) {
     }
   });
 
+  recipeList.forEach((recipe) => {
+    const fallbackIconId = recipe.outputId || map.get(recipe.outputName);
+    if (!fallbackIconId) return;
+
+    Object.keys(recipe.ingredients || {}).forEach((ingredientName) => {
+      const normalizedIngredient = normalizeIconLookupName(ingredientName);
+      if (!normalizedIngredient || map.has(ingredientName) || map.has(normalizedIngredient)) return;
+      map.set(normalizedIngredient, fallbackIconId);
+    });
+  });
+
+  Array.from(map.entries()).forEach(([name, iconId]) => {
+    const normalizedName = normalizeIconLookupName(name);
+    if (normalizedName && !map.has(normalizedName)) {
+      map.set(normalizedName, iconId);
+    }
+  });
+
   return map;
+}
+
+function normalizeIconLookupName(name) {
+  const baseName = MATERIAL_NAME_ALIASES[name] || name;
+  return String(baseName || "")
+    .replace(/^(Uncommon|Rare|Exceptional|Pristine|Fine|Excellent)\s+/, "")
+    .trim();
 }
 
 function buildRecipeIndex(recipeList) {
@@ -1458,15 +1483,16 @@ function hydrateIcon(container, name, iconId = itemIconMap.get(name)) {
   const image = container.querySelector(".item-avatar__img");
   const fallback = container.querySelector(".item-avatar__fallback");
   fallback.textContent = "";
+  const resolvedIconId = iconId || itemIconMap.get(normalizeIconLookupName(name));
 
-  if (!iconId) {
+  if (!resolvedIconId) {
     image.removeAttribute("src");
     image.hidden = true;
     fallback.hidden = false;
     return;
   }
 
-  image.src = buildIconUrl(iconId);
+  image.src = buildIconUrl(resolvedIconId);
   image.hidden = false;
   fallback.hidden = true;
   image.onerror = () => {

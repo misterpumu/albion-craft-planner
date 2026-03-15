@@ -96,6 +96,24 @@ for (const name of ingredientUsage.keys()) {
   }
 }
 
+for (const recipe of catalog.recipes) {
+  const outputId = String(recipe.id || "").split("@")[0];
+  if (!outputId) continue;
+
+  for (const name of Object.keys(recipe.ingredients || {})) {
+    const normalized = normalizeVariant(aliases.get(name) || name);
+    if (!normalized || iconMap.has(name) || iconMap.has(normalized)) continue;
+    iconMap.set(normalized, `recipe:${outputId}`);
+  }
+}
+
+for (const name of ingredientUsage.keys()) {
+  const normalized = normalizeVariant(aliases.get(name) || name);
+  if (normalized && iconMap.has(normalized) && !iconMap.has(name)) {
+    iconMap.set(name, `derived:${normalized}`);
+  }
+}
+
 const missing = [...ingredientUsage.entries()]
   .filter(([name]) => !iconMap.has(name))
   .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
@@ -127,6 +145,6 @@ function extractAliasMap(source, constName) {
 
 function normalizeVariant(name) {
   return String(name)
-    .replace(/^(Uncommon|Rare|Exceptional|Pristine)\s+/, "")
+    .replace(/^(Uncommon|Rare|Exceptional|Pristine|Fine|Excellent)\s+/, "")
     .trim();
 }
