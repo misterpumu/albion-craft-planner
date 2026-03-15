@@ -467,6 +467,7 @@ textarea {
 }
 
 .screenshot-preview-shell {
+  position: relative;
   min-height: 180px;
   max-height: 420px;
   overflow: auto;
@@ -481,6 +482,15 @@ textarea {
   height: auto;
   cursor: crosshair;
   border-radius: 12px;
+}
+
+.screenshot-selection {
+  position: absolute;
+  border: 2px solid var(--gold-strong);
+  background: rgba(221, 179, 106, 0.14);
+  border-radius: 10px;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22) inset;
 }
 
 .ocr-result {

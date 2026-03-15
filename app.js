@@ -177,6 +177,8 @@ let detectedScreenshotMatches = [];
 let screenshotObjectUrl = "";
 let screenshotRecognitionRunning = false;
 let screenshotBitmap = null;
+let screenshotSelection = null;
+let screenshotDragState = null;
 const iconDescriptorCache = new Map();
 let screenshotMaterialCandidates = [];
 
@@ -199,6 +201,7 @@ const screenshotClearButton = document.querySelector("#screenshot-clear-button")
 const screenshotStatus = document.querySelector("#screenshot-status");
 const screenshotPreviewShell = document.querySelector("#screenshot-preview-shell");
 const screenshotPreview = document.querySelector("#screenshot-preview");
+const screenshotSelectionBox = document.querySelector("#screenshot-selection");
 const screenshotPreviewEmpty = document.querySelector("#screenshot-preview-empty");
 const screenshotResults = document.querySelector("#screenshot-results");
 const resetButton = document.querySelector("#reset-button");
@@ -283,6 +286,9 @@ function bindEvents() {
   screenshotScanButton.addEventListener("click", scanScreenshotInventory);
   screenshotImportButton.addEventListener("click", importDetectedScreenshotMaterials);
   screenshotClearButton.addEventListener("click", clearScreenshotImport);
+  screenshotPreview.addEventListener("mousedown", beginScreenshotSelection);
+  window.addEventListener("mousemove", updateScreenshotSelection);
+  window.addEventListener("mouseup", finishScreenshotSelection);
 
   resetButton.addEventListener("click", () => {
     Object.keys(inventory).forEach((name) => {
@@ -1399,7 +1405,7 @@ async function handleScreenshotSelection() {
     screenshotPreview.hidden = false;
     screenshotPreviewEmpty.hidden = true;
     screenshotScanButton.disabled = false;
-    setScreenshotStatus("Screenshot loaded. Click Scan visible slots to detect the inventory automatically.");
+    setScreenshotStatus("Screenshot loaded. Drag over the inventory area, then click Scan visible slots.");
   } catch (error) {
     clearScreenshotImport(false);
     setScreenshotStatus(`Could not load screenshot: ${error instanceof Error ? error.message : String(error)}`);
@@ -1409,6 +1415,10 @@ async function handleScreenshotSelection() {
 async function scanScreenshotInventory() {
   if (screenshotRecognitionRunning) return;
   if (!screenshotBitmap) return;
+  if (!screenshotSelection) {
+    setScreenshotStatus("Draw a rectangle over the inventory area first, then scan.");
+    return;
+  }
   screenshotRecognitionRunning = true;
   screenshotScanButton.disabled = true;
   screenshotImportButton.disabled = true;
@@ -1418,7 +1428,7 @@ async function scanScreenshotInventory() {
   try {
     const slotSize = Math.max(48, Number(screenshotSlotSizeInput.value) || 84);
     setScreenshotStatus("Scanning screenshot for visible inventory slots...");
-    const slotCandidates = findScreenshotSlotCandidates(slotSize);
+    const slotCandidates = findScreenshotSlotCandidates(slotSize, getNaturalScreenshotSelection());
 
     if (!slotCandidates.length) {
       setScreenshotStatus("No likely inventory slots found. Try a tighter crop around the inventory or adjust slot size.");
@@ -1490,17 +1500,127 @@ function buildSlotCanvasFromBitmap(centerX, centerY, slotSize) {
   return canvas;
 }
 
-function findScreenshotSlotCandidates(slotSize) {
+function beginScreenshotSelection(event) {
+  if (!screenshotBitmap || screenshotPreview.hidden) return;
+  const point = mapPointerToPreview(event.clientX, event.clientY);
+  if (!point) return;
+  screenshotDragState = { startX: point.x, startY: point.y, currentX: point.x, currentY: point.y };
+  updateScreenshotSelectionBox();
+}
+
+function updateScreenshotSelection(event) {
+  if (!screenshotDragState) return;
+  const point = mapPointerToPreview(event.clientX, event.clientY);
+  if (!point) return;
+  screenshotDragState.currentX = point.x;
+  screenshotDragState.currentY = point.y;
+  updateScreenshotSelectionBox();
+}
+
+function finishScreenshotSelection() {
+  if (!screenshotDragState) return;
+  const selection = normalizeSelectionRect(
+    screenshotDragState.startX,
+    screenshotDragState.startY,
+    screenshotDragState.currentX,
+    screenshotDragState.currentY
+  );
+  screenshotDragState = null;
+
+  if (selection.width < 28 || selection.height < 28) {
+    screenshotSelection = null;
+    updateScreenshotSelectionBox();
+    setScreenshotStatus("Selection too small. Drag a larger rectangle around the inventory area.");
+    return;
+  }
+
+  screenshotSelection = selection;
+  updateScreenshotSelectionBox();
+  setScreenshotStatus("Inventory area selected. Click Scan visible slots to detect resources inside that region.");
+}
+
+function mapPointerToPreview(clientX, clientY) {
+  const rect = screenshotPreview.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
+  if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
+  return { x, y };
+}
+
+function normalizeSelectionRect(startX, startY, endX, endY) {
+  return {
+    x: Math.min(startX, endX),
+    y: Math.min(startY, endY),
+    width: Math.abs(endX - startX),
+    height: Math.abs(endY - startY)
+  };
+}
+
+function updateScreenshotSelectionBox() {
+  const activeRect = screenshotDragState
+    ? normalizeSelectionRect(
+        screenshotDragState.startX,
+        screenshotDragState.startY,
+        screenshotDragState.currentX,
+        screenshotDragState.currentY
+      )
+    : screenshotSelection;
+
+  if (!activeRect) {
+    screenshotSelectionBox.hidden = true;
+    return;
+  }
+
+  const previewRect = screenshotPreview.getBoundingClientRect();
+  const shellRect = screenshotPreviewShell.getBoundingClientRect();
+  const left = screenshotPreview.offsetLeft + activeRect.x;
+  const top = screenshotPreview.offsetTop + activeRect.y;
+
+  screenshotSelectionBox.hidden = false;
+  screenshotSelectionBox.style.left = `${left}px`;
+  screenshotSelectionBox.style.top = `${top}px`;
+  screenshotSelectionBox.style.width = `${activeRect.width}px`;
+  screenshotSelectionBox.style.height = `${activeRect.height}px`;
+  screenshotSelectionBox.style.maxWidth = `${Math.max(0, previewRect.width - (left - screenshotPreview.offsetLeft))}px`;
+  screenshotSelectionBox.style.maxHeight = `${Math.max(0, shellRect.height - (top - screenshotPreview.offsetTop))}px`;
+}
+
+function getNaturalScreenshotSelection() {
+  if (!screenshotSelection) return null;
+  const previewRect = screenshotPreview.getBoundingClientRect();
+  const ratioX = screenshotPreview.naturalWidth / Math.max(1, previewRect.width);
+  const ratioY = screenshotPreview.naturalHeight / Math.max(1, previewRect.height);
+
+  return {
+    x: Math.round(screenshotSelection.x * ratioX),
+    y: Math.round(screenshotSelection.y * ratioY),
+    width: Math.round(screenshotSelection.width * ratioX),
+    height: Math.round(screenshotSelection.height * ratioY)
+  };
+}
+
+function findScreenshotSlotCandidates(slotSize, bounds) {
   if (!screenshotBitmap) return [];
 
   const step = Math.max(10, Math.round(slotSize / 5));
   const margin = Math.round(slotSize / 2);
   const candidates = [];
+  const startX = Math.max(margin, bounds ? bounds.x + margin : margin);
+  const startY = Math.max(margin, bounds ? bounds.y + margin : margin);
+  const endX = Math.min(
+    screenshotBitmap.width - margin,
+    bounds ? bounds.x + bounds.width - margin : screenshotBitmap.width - margin
+  );
+  const endY = Math.min(
+    screenshotBitmap.height - margin,
+    bounds ? bounds.y + bounds.height - margin : screenshotBitmap.height - margin
+  );
 
-  for (let centerY = margin; centerY <= screenshotBitmap.height - margin; centerY += step) {
-    for (let centerX = margin; centerX <= screenshotBitmap.width - margin; centerX += step) {
+  for (let centerY = startY; centerY <= endY; centerY += step) {
+    for (let centerX = startX; centerX <= endX; centerX += step) {
       const score = scoreSlotCandidate(centerX, centerY, slotSize);
-      if (score < 0.58) continue;
+      if (score < 0.46) continue;
       candidates.push({ centerX, centerY, score });
     }
   }
@@ -1510,7 +1630,7 @@ function findScreenshotSlotCandidates(slotSize) {
   const minDistance = Math.round(slotSize * 0.72);
 
   for (const candidate of candidates) {
-    if (accepted.length >= 36) break;
+  if (accepted.length >= 36) break;
     const overlaps = accepted.some((entry) => {
       const dx = entry.centerX - candidate.centerX;
       const dy = entry.centerY - candidate.centerY;
@@ -1597,7 +1717,7 @@ async function matchSlotToMaterial(slotCanvas) {
     }
   }
 
-  return best && best.score < 38 ? best : null;
+  return best && best.score < 52 ? best : null;
 }
 
 function extractIconArea(slotCanvas) {
@@ -1763,10 +1883,13 @@ function clearScreenshotImport(resetInput = true) {
   }
 
   detectedScreenshotMatches = [];
+  screenshotSelection = null;
+  screenshotDragState = null;
   renderScreenshotResults();
   screenshotPreview.hidden = true;
   screenshotPreview.removeAttribute("src");
   screenshotPreviewEmpty.hidden = false;
+  screenshotSelectionBox.hidden = true;
   screenshotScanButton.disabled = true;
   screenshotImportButton.disabled = true;
 
@@ -1774,7 +1897,7 @@ function clearScreenshotImport(resetInput = true) {
     screenshotFileInput.value = "";
   }
 
-  setScreenshotStatus("Upload a screenshot, then scan the visible inventory slots.");
+  setScreenshotStatus("Upload a screenshot, drag over the inventory area, then scan the visible slots.");
 }
 
 function setScreenshotStatus(message) {

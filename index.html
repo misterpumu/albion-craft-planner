@@ -69,7 +69,7 @@
             </div>
           </div>
           <p class="helper-text">
-            Upload a full inventory screenshot and the app will try to scan the visible resource slots automatically in your browser. The image is not stored.
+            Upload a full inventory screenshot, drag once over the inventory area, and the app will scan the visible resource slots inside that region in your browser. The image is not stored.
           </p>
           <label class="bulk-input">
             <span>Screenshot file</span>
@@ -86,10 +86,11 @@
             <button id="screenshot-import-button" class="ghost-button" type="button" disabled>Import detected</button>
             <button id="screenshot-clear-button" class="ghost-button" type="button">Clear screenshot</button>
           </div>
-          <p id="screenshot-status" class="helper-text">Upload a screenshot, then scan the visible inventory slots.</p>
+          <p id="screenshot-status" class="helper-text">Upload a screenshot, drag over the inventory area, then scan the visible slots.</p>
           <div class="screenshot-stage">
             <div id="screenshot-preview-shell" class="screenshot-preview-shell">
               <img id="screenshot-preview" class="screenshot-preview" alt="" hidden>
+              <div id="screenshot-selection" class="screenshot-selection" hidden></div>
               <p id="screenshot-preview-empty" class="helper-text">No screenshot loaded yet.</p>
             </div>
           </div>
