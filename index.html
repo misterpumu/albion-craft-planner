@@ -11,15 +11,15 @@
     <section class="hero">
       <div class="hero__copy">
         <p class="eyebrow">Albion Online</p>
-        <h1>I tell you what to refine and what to craft with what you have</h1>
-        <p class="hero__text">
+        <h1 id="hero-title">I tell you what to refine and what to craft with what you have</h1>
+        <p id="hero-text" class="hero__text">
           Add your resources and the app will look for the best possible chain with a simple heuristic:
           prioritize higher tier final items and use refining as an intermediate step.
         </p>
       </div>
       <div class="hero__panel">
         <label class="language-picker">
-          <span>Language</span>
+          <span id="language-label">Language</span>
           <select id="language-select">
             <option value="en">English</option>
             <option value="es">Espanol</option>
@@ -27,15 +27,15 @@
         </label>
         <div class="hero__stat">
           <span id="best-tier">-</span>
-          <p>Best reachable tier</p>
+          <p id="best-tier-label">Best reachable tier</p>
         </div>
         <div class="hero__stat">
           <span id="plan-steps-count">0</span>
-          <p>Best plan steps</p>
+          <p id="best-steps-label">Best plan steps</p>
         </div>
         <div class="hero__stat hero__stat--small">
           <span id="reachable-count">0</span>
-          <p>Reachable options</p>
+          <p id="reachable-options-label">Reachable options</p>
         </div>
       </div>
     </section>
@@ -44,34 +44,34 @@
       <aside class="card inventory-card">
         <div class="card__header">
           <div>
-            <p class="section-label">Inventory</p>
-            <h2>Add only what you have</h2>
+            <p id="inventory-section-label" class="section-label">Inventory</p>
+            <h2 id="inventory-title">Add only what you have</h2>
           </div>
           <button id="reset-button" class="ghost-button" type="button">Reset</button>
         </div>
 
-        <p class="helper-text">
+        <p id="inventory-helper" class="helper-text">
           Search for a resource, choose the amount and add it. Below you will only see your current inventory, not the full catalog.
         </p>
 
         <section class="material-picker">
           <label class="inventory-search">
-            <span>Search and add material</span>
+            <span id="material-search-label">Search and add material</span>
             <input id="material-picker-search" type="search" placeholder="Search and add materials with icons...">
           </label>
           <div id="material-picker-results" class="material-picker-results"></div>
         </section>
 
         <label class="bulk-input">
-          <span>Quick paste</span>
+          <span id="bulk-label">Quick paste</span>
           <textarea id="bulk-input" rows="5" placeholder="Example:&#10;Iron Ore=80&#10;Bronze Bar=40&#10;Pine Planks=24"></textarea>
         </label>
         <button id="apply-bulk-button" class="primary-button" type="button">Apply inventory</button>
 
         <div class="card__header inventory-current-header">
           <div>
-            <p class="section-label">Current</p>
-            <h2>Your inventory</h2>
+            <p id="current-section-label" class="section-label">Current</p>
+            <h2 id="current-title">Your inventory</h2>
           </div>
         </div>
 
@@ -82,8 +82,8 @@
         <section class="card">
           <div class="card__header">
             <div>
-              <p class="section-label">Plan</p>
-              <h2>Best recommended chain</h2>
+              <p id="plan-section-label" class="section-label">Plan</p>
+              <h2 id="plan-title">Best recommended chain</h2>
             </div>
             <div class="inline-stats">
               <span id="tracked-count">0 materials</span>
@@ -103,7 +103,7 @@
 
           <div class="planner-controls">
             <label class="planner-controls__field">
-              <span>Starting city</span>
+              <span id="starting-city-label">Starting city</span>
               <select id="starting-city">
                 <option value="Caerleon">Caerleon</option>
                 <option value="Bridgewatch">Bridgewatch</option>
@@ -122,23 +122,23 @@
         <section class="card">
           <div class="card__header">
             <div>
-              <p class="section-label">Options</p>
-              <h2>Reachable alternatives</h2>
+              <p id="options-section-label" class="section-label">Options</p>
+              <h2 id="options-title">Reachable alternatives</h2>
             </div>
           </div>
 
           <div class="filters">
             <label>
-              <span>Search target</span>
+              <span id="search-target-label">Search target</span>
               <input id="search-input" type="search" placeholder="Greataxe, bag, robe...">
             </label>
             <label>
-              <span>Category</span>
+              <span id="category-label">Category</span>
               <select id="category-filter"></select>
             </label>
           </div>
 
-          <p class="helper-text">
+          <p id="recommendations-helper" class="helper-text">
             Recommendations are calculated from the exact local catalog plus a base refining layer for metal, wood, fiber and leather.
           </p>
 
@@ -148,18 +148,18 @@
         <section class="card">
           <div class="card__header">
             <div>
-              <p class="section-label">Target</p>
-              <h2>Plan backwards from a desired item</h2>
+              <p id="target-section-label" class="section-label">Target</p>
+              <h2 id="target-title">Plan backwards from a desired item</h2>
             </div>
           </div>
 
-          <p class="helper-text">
+          <p id="target-helper" class="helper-text">
             Search for the item you want, choose how many units you need, and the app will tell you the steps plus the missing resources.
           </p>
 
           <section class="material-picker target-picker">
             <label class="inventory-search">
-              <span>Search target item</span>
+              <span id="target-search-label">Search target item</span>
               <input id="target-picker-search" type="search" placeholder="Great Fire Staff, bag, robe...">
             </label>
             <div id="target-picker-results" class="material-picker-results"></div>
@@ -169,7 +169,7 @@
             <div id="selected-target" class="selected-target helper-text">No target selected yet.</div>
             <div class="target-builder__controls">
               <label>
-                <span>Desired amount</span>
+                <span id="desired-amount-label">Desired amount</span>
                 <input id="target-amount-input" type="number" min="1" step="1" value="1">
               </label>
               <button id="analyze-target-button" class="primary-button primary-button--compact" type="button">Analyze Target</button>
