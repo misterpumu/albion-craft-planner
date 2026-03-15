@@ -444,16 +444,6 @@ textarea {
   align-items: center;
 }
 
-.ocr-controls {
-  display: flex;
-  gap: 12px;
-  align-items: end;
-}
-
-.ocr-controls .planner-controls__field {
-  max-width: 180px;
-}
-
 .ocr-results {
   display: grid;
   gap: 10px;

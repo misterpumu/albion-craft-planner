@@ -1,6 +1,7 @@
 const storageKey = "albion-crafteo-inventory-v3";
 const routeSettingsKey = "albion-crafteo-route-v1";
 const ALL_CATEGORIES = "__ALL__";
+const DEFAULT_SCREENSHOT_SLOT_SIZE = 84;
 const MATERIAL_NAME_ALIASES = {
   "Baroque Cloth": "Exquisite Cloth",
   "Cured Leather": "Worked Leather"
@@ -194,7 +195,6 @@ const targetPlan = document.querySelector("#target-plan");
 const bulkInput = document.querySelector("#bulk-input");
 const applyBulkButton = document.querySelector("#apply-bulk-button");
 const screenshotFileInput = document.querySelector("#screenshot-file-input");
-const screenshotSlotSizeInput = document.querySelector("#screenshot-slot-size");
 const screenshotScanButton = document.querySelector("#screenshot-scan-button");
 const screenshotImportButton = document.querySelector("#screenshot-import-button");
 const screenshotClearButton = document.querySelector("#screenshot-clear-button");
@@ -1394,7 +1394,7 @@ async function handleScreenshotSelection() {
   clearScreenshotImport(false);
 
   if (!file) {
-    setScreenshotStatus("Upload a screenshot, then scan the visible inventory slots.");
+    setScreenshotStatus("Upload a screenshot and scan it. If needed, drag over the inventory area first to limit the scan.");
     return;
   }
 
@@ -1405,7 +1405,7 @@ async function handleScreenshotSelection() {
     screenshotPreview.hidden = false;
     screenshotPreviewEmpty.hidden = true;
     screenshotScanButton.disabled = false;
-    setScreenshotStatus("Screenshot loaded. Drag over the inventory area, then click Scan visible slots.");
+    setScreenshotStatus("Screenshot loaded. Click Scan visible slots. If needed, drag over the inventory area first.");
   } catch (error) {
     clearScreenshotImport(false);
     setScreenshotStatus(`Could not load screenshot: ${error instanceof Error ? error.message : String(error)}`);
@@ -1426,16 +1426,25 @@ async function scanScreenshotInventory() {
   renderScreenshotResults();
 
   try {
-    const slotSize = Math.max(48, Number(screenshotSlotSizeInput.value) || 84);
-    setScreenshotStatus("Scanning screenshot for visible inventory slots...");
-    const slotCandidates = findScreenshotSlotCandidates(slotSize, getNaturalScreenshotSelection());
+    const scanBounds = getNaturalScreenshotSelection() || {
+      x: 0,
+      y: 0,
+      width: screenshotBitmap.width,
+      height: screenshotBitmap.height
+    };
+    setScreenshotStatus("Detecting inventory grid and visible slots...");
+    const grid = estimateScreenshotGrid(scanBounds);
+    const slotSize = grid?.slotSize || DEFAULT_SCREENSHOT_SLOT_SIZE;
+    const slotCandidates = grid?.slots?.length
+      ? grid.slots
+      : findScreenshotSlotCandidates(slotSize, scanBounds);
 
     if (!slotCandidates.length) {
-      setScreenshotStatus("No likely inventory slots found. Try a tighter crop around the inventory or adjust slot size.");
+      setScreenshotStatus("No likely inventory slots found. Try a tighter crop around the inventory area.");
       return;
     }
 
-    setScreenshotStatus(`Found ${slotCandidates.length} likely slot(s). Matching icons and reading quantities...`);
+    setScreenshotStatus(`Found ${slotCandidates.length} likely slot(s) using an estimated slot size of ${Math.round(slotSize)}px. Matching icons and reading quantities...`);
     const aggregateMatches = new Map();
 
     for (let index = 0; index < slotCandidates.length; index += 1) {
@@ -1474,7 +1483,7 @@ async function scanScreenshotInventory() {
     if (detectedScreenshotMatches.length) {
       setScreenshotStatus(`Detected ${detectedScreenshotMatches.length} material stack(s). Review and import if it looks right.`);
     } else {
-      setScreenshotStatus("The scan did not find confident material matches. Try a tighter crop or a different slot size.");
+      setScreenshotStatus("The scan did not find confident material matches. Try a tighter crop around the inventory area.");
     }
   } catch (error) {
     setScreenshotStatus(`Screenshot scan failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -1644,6 +1653,107 @@ function findScreenshotSlotCandidates(slotSize, bounds) {
   return accepted.sort((left, right) => left.centerY - right.centerY || left.centerX - right.centerX);
 }
 
+function estimateScreenshotGrid(bounds) {
+  const candidates = [];
+
+  for (let slotSize = 56; slotSize <= 108; slotSize += 2) {
+    const xAxis = scoreGridAxis(bounds, slotSize, "x");
+    const yAxis = scoreGridAxis(bounds, slotSize, "y");
+    if (!xAxis || !yAxis) continue;
+
+    candidates.push({
+      slotSize,
+      score: xAxis.score + yAxis.score,
+      offsetX: xAxis.offset,
+      offsetY: yAxis.offset
+    });
+  }
+
+  candidates.sort((left, right) => right.score - left.score);
+  const best = candidates[0];
+  if (!best || best.score < 0.4) {
+    return null;
+  }
+
+  const slots = buildGridSlots(bounds, best.slotSize, best.offsetX, best.offsetY);
+  return { ...best, slots };
+}
+
+function scoreGridAxis(bounds, slotSize, axis) {
+  const offsetStep = 2;
+  let best = null;
+
+  for (let offset = 0; offset < slotSize; offset += offsetStep) {
+    const score = sampleGridLines(bounds, slotSize, offset, axis);
+    if (!best || score > best.score) {
+      best = { offset, score };
+    }
+  }
+
+  return best;
+}
+
+function sampleGridLines(bounds, slotSize, offset, axis) {
+  const canvas = document.createElement("canvas");
+  canvas.width = screenshotBitmap.width;
+  canvas.height = screenshotBitmap.height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(screenshotBitmap, 0, 0);
+  const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  let totalDark = 0;
+  let total = 0;
+  let lineCount = 0;
+
+  if (axis === "x") {
+    for (let x = bounds.x + offset; x <= bounds.x + bounds.width; x += slotSize) {
+      lineCount += 1;
+      for (let y = bounds.y; y < bounds.y + bounds.height; y += 2) {
+        for (let band = -1; band <= 1; band += 1) {
+          const sampleX = Math.min(canvas.width - 1, Math.max(0, Math.round(x + band)));
+          const sampleIndex = (y * canvas.width + sampleX) * 4;
+          const gray = data[sampleIndex] * 0.299 + data[sampleIndex + 1] * 0.587 + data[sampleIndex + 2] * 0.114;
+          total += 1;
+          if (gray < 120) totalDark += 1;
+        }
+      }
+    }
+  } else {
+    for (let y = bounds.y + offset; y <= bounds.y + bounds.height; y += slotSize) {
+      lineCount += 1;
+      for (let x = bounds.x; x < bounds.x + bounds.width; x += 2) {
+        for (let band = -1; band <= 1; band += 1) {
+          const sampleY = Math.min(canvas.height - 1, Math.max(0, Math.round(y + band)));
+          const sampleIndex = (sampleY * canvas.width + x) * 4;
+          const gray = data[sampleIndex] * 0.299 + data[sampleIndex + 1] * 0.587 + data[sampleIndex + 2] * 0.114;
+          total += 1;
+          if (gray < 120) totalDark += 1;
+        }
+      }
+    }
+  }
+
+  if (!total || lineCount < 2) return 0;
+  return (totalDark / total) * Math.min(1, lineCount / 4);
+}
+
+function buildGridSlots(bounds, slotSize, offsetX, offsetY) {
+  const slots = [];
+  const startX = bounds.x + offsetX + slotSize / 2;
+  const startY = bounds.y + offsetY + slotSize / 2;
+  const maxX = bounds.x + bounds.width - slotSize / 2;
+  const maxY = bounds.y + bounds.height - slotSize / 2;
+
+  for (let centerY = startY; centerY <= maxY; centerY += slotSize) {
+    for (let centerX = startX; centerX <= maxX; centerX += slotSize) {
+      const score = scoreSlotCandidate(centerX, centerY, slotSize);
+      if (score < 0.36) continue;
+      slots.push({ centerX, centerY, score });
+    }
+  }
+
+  return slots;
+}
+
 function scoreSlotCandidate(centerX, centerY, slotSize) {
   const canvas = buildSlotCanvasFromBitmap(centerX, centerY, slotSize);
   const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -1717,7 +1827,7 @@ async function matchSlotToMaterial(slotCanvas) {
     }
   }
 
-  return best && best.score < 52 ? best : null;
+  return best && best.score < 64 ? best : null;
 }
 
 function extractIconArea(slotCanvas) {
@@ -1897,7 +2007,7 @@ function clearScreenshotImport(resetInput = true) {
     screenshotFileInput.value = "";
   }
 
-  setScreenshotStatus("Upload a screenshot, drag over the inventory area, then scan the visible slots.");
+  setScreenshotStatus("Upload a screenshot and scan it. If needed, drag over the inventory area first to limit the scan.");
 }
 
 function setScreenshotStatus(message) {

@@ -75,18 +75,12 @@
             <span>Screenshot file</span>
             <input id="screenshot-file-input" type="file" accept="image/*">
           </label>
-          <div class="ocr-controls">
-            <label class="planner-controls__field">
-              <span>Slot size (px)</span>
-              <input id="screenshot-slot-size" type="number" min="48" max="180" step="2" value="84">
-            </label>
-          </div>
           <div class="ocr-actions">
             <button id="screenshot-scan-button" class="primary-button primary-button--compact" type="button" disabled>Scan visible slots</button>
             <button id="screenshot-import-button" class="ghost-button" type="button" disabled>Import detected</button>
             <button id="screenshot-clear-button" class="ghost-button" type="button">Clear screenshot</button>
           </div>
-          <p id="screenshot-status" class="helper-text">Upload a screenshot, drag over the inventory area, then scan the visible slots.</p>
+          <p id="screenshot-status" class="helper-text">Upload a screenshot and scan it. If needed, drag over the inventory area first to limit the scan.</p>
           <div class="screenshot-stage">
             <div id="screenshot-preview-shell" class="screenshot-preview-shell">
               <img id="screenshot-preview" class="screenshot-preview" alt="" hidden>
