@@ -16,9 +16,9 @@ const REFINING_CITY_RETURN_RATE = 0.4;
 const CITY_GRAPH = {
   Caerleon: ["Bridgewatch", "Fort Sterling", "Lymhurst", "Martlock", "Thetford", "Brecilien"],
   Bridgewatch: ["Caerleon", "Martlock", "Thetford"],
-  Martlock: ["Bridgewatch", "Caerleon", "Fort Sterling"],
-  "Fort Sterling": ["Martlock", "Caerleon", "Lymhurst", "Thetford"],
-  Lymhurst: ["Fort Sterling", "Caerleon"],
+  Martlock: ["Bridgewatch", "Caerleon", "Lymhurst"],
+  "Fort Sterling": ["Caerleon", "Lymhurst", "Thetford"],
+  Lymhurst: ["Fort Sterling", "Caerleon", "Martlock"],
   Thetford: ["Fort Sterling", "Caerleon", "Bridgewatch"],
   Brecilien: ["Caerleon"]
 };
