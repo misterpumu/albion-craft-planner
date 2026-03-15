@@ -66,6 +66,51 @@ const QUICK_ITEMS = RESOURCE_LINES.flatMap((line) =>
   })
 );
 
+const FISH_ITEMS = [
+  "Striped Carp",
+  "Common Rudd",
+  "Albion Perch",
+  "Bluescale Pike",
+  "Spotted Trout",
+  "Brightscale Zander",
+  "River Sturgeon",
+  "Danglemouth Catfish",
+  "Greenriver Eel",
+  "Redspring Eel",
+  "Deadwater Eel",
+  "Whitefog Snapper",
+  "Clearhaze Snapper",
+  "Puremist Snapper",
+  "Upland Coldeye",
+  "Mountain Blindeye",
+  "Frostpeak Deadeye",
+  "Stonestream Lurcher",
+  "Rushwater Lurcher",
+  "Thunderfall Lurcher",
+  "Lowriver Crab",
+  "Drybrook Crab",
+  "Dusthole Crab",
+  "Greenmoor Clam",
+  "Murkwater Clam",
+  "Blackbog Clam",
+  "Shallowshore Squid",
+  "Midwater Octopus",
+  "Deepwater Kraken",
+  "Common Herring",
+  "Striped Mackerel",
+  "Flatshore Plaice",
+  "Bluescale Cod",
+  "Spotted Wolffish",
+  "Strongfin Salmon",
+  "Bluefin Tuna",
+  "Steelscale Swordfish",
+  "Seaweed",
+  "Basic Fish Sauce",
+  "Fancy Fish Sauce",
+  "Special Fish Sauce",
+  "Chopped Fish"
+];
+
 const inventory = loadInventory();
 const routeSettings = loadRouteSettings();
 let recipes = [];
@@ -1189,7 +1234,7 @@ function recipePriority(category) {
 }
 
 function collectAllTrackableNames(recipeList) {
-  const names = new Set(QUICK_ITEMS.map((item) => item.name));
+  const names = new Set([...QUICK_ITEMS.map((item) => item.name), ...FISH_ITEMS]);
 
   recipeList.forEach((recipe) => {
     names.add(recipe.outputName);
@@ -1200,7 +1245,7 @@ function collectAllTrackableNames(recipeList) {
 }
 
 function collectSearchableMaterials(recipeList) {
-  const names = new Set(QUICK_ITEMS.map((item) => item.name));
+  const names = new Set([...QUICK_ITEMS.map((item) => item.name), ...FISH_ITEMS]);
 
   recipeList.forEach((recipe) => {
     Object.keys(recipe.ingredients).forEach((name) => {
