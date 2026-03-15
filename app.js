@@ -293,7 +293,6 @@ function bindEvents() {
   screenshotImportButton.addEventListener("click", importDetectedScreenshotMaterials);
   screenshotClearButton.addEventListener("click", clearScreenshotImport);
   screenshotPreview.addEventListener("mousedown", beginScreenshotSelection);
-  screenshotPreview.addEventListener("click", handleScreenshotGridPointClick);
   window.addEventListener("mousemove", updateScreenshotSelection);
   window.addEventListener("mouseup", finishScreenshotSelection);
 
@@ -1519,8 +1518,14 @@ function buildSlotCanvasFromBitmap(centerX, centerY, slotSize) {
 }
 
 function beginScreenshotSelection(event) {
-  if (screenshotGridMarkMode) return;
   if (!screenshotBitmap || screenshotPreview.hidden) return;
+  event.preventDefault();
+
+  if (screenshotGridMarkMode) {
+    handleScreenshotGridPointPick(event);
+    return;
+  }
+
   const point = mapPointerToPreview(event.clientX, event.clientY);
   if (!point) return;
   screenshotDragState = { startX: point.x, startY: point.y, currentX: point.x, currentY: point.y };
@@ -1540,12 +1545,10 @@ function toggleScreenshotGridMarkMode() {
   }
 }
 
-function handleScreenshotGridPointClick(event) {
+function handleScreenshotGridPointPick(event) {
   if (!screenshotGridMarkMode || !screenshotBitmap || screenshotPreview.hidden) return;
   const point = mapPointerToPreview(event.clientX, event.clientY);
   if (!point) return;
-  event.preventDefault();
-  event.stopPropagation();
   screenshotGridPoints.push(point);
   screenshotGridPoints = screenshotGridPoints.slice(0, 2);
   updateScreenshotGridPoints();
