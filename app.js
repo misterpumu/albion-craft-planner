@@ -176,6 +176,7 @@ const workerRequests = new Map();
 let detectedScreenshotMatches = [];
 let screenshotObjectUrl = "";
 let screenshotRecognitionRunning = false;
+let screenshotBitmap = null;
 const iconDescriptorCache = new Map();
 let screenshotMaterialCandidates = [];
 
@@ -192,6 +193,7 @@ const bulkInput = document.querySelector("#bulk-input");
 const applyBulkButton = document.querySelector("#apply-bulk-button");
 const screenshotFileInput = document.querySelector("#screenshot-file-input");
 const screenshotSlotSizeInput = document.querySelector("#screenshot-slot-size");
+const screenshotScanButton = document.querySelector("#screenshot-scan-button");
 const screenshotImportButton = document.querySelector("#screenshot-import-button");
 const screenshotClearButton = document.querySelector("#screenshot-clear-button");
 const screenshotStatus = document.querySelector("#screenshot-status");
@@ -278,7 +280,7 @@ function bindEvents() {
   });
 
   screenshotFileInput.addEventListener("change", handleScreenshotSelection);
-  screenshotPreview.addEventListener("click", handleScreenshotPreviewClick);
+  screenshotScanButton.addEventListener("click", scanScreenshotInventory);
   screenshotImportButton.addEventListener("click", importDetectedScreenshotMaterials);
   screenshotClearButton.addEventListener("click", clearScreenshotImport);
 
@@ -1381,84 +1383,99 @@ function collectSearchableTargets(recipeList) {
     .sort((left, right) => left.localeCompare(right));
 }
 
-function handleScreenshotSelection() {
+async function handleScreenshotSelection() {
   const file = screenshotFileInput.files?.[0];
   clearScreenshotImport(false);
 
   if (!file) {
-    setScreenshotStatus("Upload a screenshot, then click on each resource slot you want to detect.");
+    setScreenshotStatus("Upload a screenshot, then scan the visible inventory slots.");
     return;
   }
 
-  screenshotObjectUrl = URL.createObjectURL(file);
-  screenshotPreview.src = screenshotObjectUrl;
-  screenshotPreview.hidden = false;
-  screenshotPreviewEmpty.hidden = true;
-  setScreenshotStatus("Screenshot loaded. Click on a material slot to try to detect its icon and quantity.");
+  try {
+    screenshotObjectUrl = URL.createObjectURL(file);
+    screenshotBitmap = await createImageBitmap(file);
+    screenshotPreview.src = screenshotObjectUrl;
+    screenshotPreview.hidden = false;
+    screenshotPreviewEmpty.hidden = true;
+    screenshotScanButton.disabled = false;
+    setScreenshotStatus("Screenshot loaded. Click Scan visible slots to detect the inventory automatically.");
+  } catch (error) {
+    clearScreenshotImport(false);
+    setScreenshotStatus(`Could not load screenshot: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
-async function handleScreenshotPreviewClick(event) {
+async function scanScreenshotInventory() {
   if (screenshotRecognitionRunning) return;
-  if (!screenshotPreview.src) return;
-
+  if (!screenshotBitmap) return;
   screenshotRecognitionRunning = true;
+  screenshotScanButton.disabled = true;
   screenshotImportButton.disabled = true;
+  detectedScreenshotMatches = [];
+  renderScreenshotResults();
 
   try {
-    const { naturalX, naturalY } = mapScreenshotClick(event);
     const slotSize = Math.max(48, Number(screenshotSlotSizeInput.value) || 84);
-    setScreenshotStatus("Analyzing clicked slot...");
-    const slotCanvas = await buildSlotCanvasFromPreview(naturalX, naturalY, slotSize);
-    const [match, amount] = await Promise.all([
-      matchSlotToMaterial(slotCanvas),
-      readSlotAmount(slotCanvas)
-    ]);
+    setScreenshotStatus("Scanning screenshot for visible inventory slots...");
+    const slotCandidates = findScreenshotSlotCandidates(slotSize);
 
-    if (!match) {
-      setScreenshotStatus("No confident icon match found for that slot. Try clicking closer to the center or adjust slot size.");
+    if (!slotCandidates.length) {
+      setScreenshotStatus("No likely inventory slots found. Try a tighter crop around the inventory or adjust slot size.");
       return;
     }
 
-    const previous = detectedScreenshotMatches.find((entry) => entry.name === match.name);
-    const nextEntry = {
-      name: match.name,
-      amount: amount || 1,
-      score: match.score
-    };
+    setScreenshotStatus(`Found ${slotCandidates.length} likely slot(s). Matching icons and reading quantities...`);
+    const aggregateMatches = new Map();
 
-    if (previous) {
-      previous.amount = Math.max(previous.amount, nextEntry.amount);
-      previous.score = Math.max(previous.score, nextEntry.score);
-    } else {
-      detectedScreenshotMatches.push(nextEntry);
+    for (let index = 0; index < slotCandidates.length; index += 1) {
+      const slot = slotCandidates[index];
+      const slotCanvas = buildSlotCanvasFromBitmap(slot.centerX, slot.centerY, slotSize);
+      const [match, amount] = await Promise.all([
+        matchSlotToMaterial(slotCanvas),
+        readSlotAmount(slotCanvas)
+      ]);
+
+      if (!match) continue;
+
+      const current = aggregateMatches.get(match.name);
+      if (current) {
+        current.amount += amount || 1;
+        current.score = Math.min(current.score, match.score);
+      } else {
+        aggregateMatches.set(match.name, {
+          name: match.name,
+          amount: amount || 1,
+          score: match.score
+        });
+      }
+
+      if ((index + 1) % 4 === 0 || index === slotCandidates.length - 1) {
+        setScreenshotStatus(`Matching icons and quantities... ${index + 1}/${slotCandidates.length}`);
+      }
     }
 
-    detectedScreenshotMatches.sort((left, right) => right.amount - left.amount || left.name.localeCompare(right.name));
+    detectedScreenshotMatches = Array.from(aggregateMatches.values())
+      .sort((left, right) => right.amount - left.amount || left.name.localeCompare(right.name));
+
     renderScreenshotResults();
     screenshotImportButton.disabled = !detectedScreenshotMatches.length;
-    setScreenshotStatus(`Detected ${match.name}${amount ? ` x${amount}` : ""}. Click more slots or import the current list.`);
+
+    if (detectedScreenshotMatches.length) {
+      setScreenshotStatus(`Detected ${detectedScreenshotMatches.length} material stack(s). Review and import if it looks right.`);
+    } else {
+      setScreenshotStatus("The scan did not find confident material matches. Try a tighter crop or a different slot size.");
+    }
   } catch (error) {
     setScreenshotStatus(`Screenshot scan failed: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
     screenshotRecognitionRunning = false;
+    screenshotScanButton.disabled = !screenshotBitmap;
   }
 }
 
-function mapScreenshotClick(event) {
-  const rect = screenshotPreview.getBoundingClientRect();
-  const offsetX = event.clientX - rect.left;
-  const offsetY = event.clientY - rect.top;
-  const ratioX = screenshotPreview.naturalWidth / Math.max(1, rect.width);
-  const ratioY = screenshotPreview.naturalHeight / Math.max(1, rect.height);
-
-  return {
-    naturalX: offsetX * ratioX,
-    naturalY: offsetY * ratioY
-  };
-}
-
-async function buildSlotCanvasFromPreview(centerX, centerY, slotSize) {
-  const bitmap = await createImageBitmap(await fetch(screenshotPreview.src).then((response) => response.blob()));
+function buildSlotCanvasFromBitmap(centerX, centerY, slotSize) {
+  const bitmap = screenshotBitmap;
   const cropSize = Math.max(48, slotSize);
   const left = Math.max(0, Math.round(centerX - cropSize / 2));
   const top = Math.max(0, Math.round(centerY - cropSize / 2));
@@ -1470,8 +1487,100 @@ async function buildSlotCanvasFromPreview(centerX, centerY, slotSize) {
 
   const context = canvas.getContext("2d", { willReadFrequently: true });
   context.drawImage(bitmap, left, top, width, height, 0, 0, width, height);
-  bitmap.close();
   return canvas;
+}
+
+function findScreenshotSlotCandidates(slotSize) {
+  if (!screenshotBitmap) return [];
+
+  const step = Math.max(10, Math.round(slotSize / 5));
+  const margin = Math.round(slotSize / 2);
+  const candidates = [];
+
+  for (let centerY = margin; centerY <= screenshotBitmap.height - margin; centerY += step) {
+    for (let centerX = margin; centerX <= screenshotBitmap.width - margin; centerX += step) {
+      const score = scoreSlotCandidate(centerX, centerY, slotSize);
+      if (score < 0.58) continue;
+      candidates.push({ centerX, centerY, score });
+    }
+  }
+
+  candidates.sort((left, right) => right.score - left.score);
+  const accepted = [];
+  const minDistance = Math.round(slotSize * 0.72);
+
+  for (const candidate of candidates) {
+    if (accepted.length >= 36) break;
+    const overlaps = accepted.some((entry) => {
+      const dx = entry.centerX - candidate.centerX;
+      const dy = entry.centerY - candidate.centerY;
+      return Math.hypot(dx, dy) < minDistance;
+    });
+    if (!overlaps) {
+      accepted.push(candidate);
+    }
+  }
+
+  return accepted.sort((left, right) => left.centerY - right.centerY || left.centerX - right.centerX);
+}
+
+function scoreSlotCandidate(centerX, centerY, slotSize) {
+  const canvas = buildSlotCanvasFromBitmap(centerX, centerY, slotSize);
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  const width = canvas.width;
+  const height = canvas.height;
+
+  let borderDark = 0;
+  let borderCount = 0;
+  let centerVariance = 0;
+  let centerCount = 0;
+  let amountContrast = 0;
+  let amountCount = 0;
+  let centerSum = 0;
+  let centerSquares = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const gray = imageData[index] * 0.299 + imageData[index + 1] * 0.587 + imageData[index + 2] * 0.114;
+      const borderBand = Math.max(4, Math.round(slotSize * 0.08));
+      const isBorder = x < borderBand || y < borderBand || x >= width - borderBand || y >= height - borderBand;
+
+      if (isBorder) {
+        borderCount += 1;
+        if (gray < 105) borderDark += 1;
+        continue;
+      }
+
+      const centerLeft = Math.round(width * 0.18);
+      const centerRight = Math.round(width * 0.82);
+      const centerTop = Math.round(height * 0.1);
+      const centerBottom = Math.round(height * 0.8);
+      const isCenter = x >= centerLeft && x <= centerRight && y >= centerTop && y <= centerBottom;
+      if (isCenter) {
+        centerCount += 1;
+        centerSum += gray;
+        centerSquares += gray * gray;
+      }
+
+      const amountArea = x >= Math.round(width * 0.56) && y >= Math.round(height * 0.64);
+      if (amountArea) {
+        amountCount += 1;
+        if (gray > 170 || gray < 70) amountContrast += 1;
+      }
+    }
+  }
+
+  if (!borderCount || !centerCount || !amountCount) return 0;
+
+  const borderScore = borderDark / borderCount;
+  const mean = centerSum / centerCount;
+  const variance = Math.max(0, centerSquares / centerCount - mean * mean);
+  const normalizedVariance = Math.min(1, variance / 2200);
+  const amountScore = amountContrast / amountCount;
+
+  return borderScore * 0.45 + normalizedVariance * 0.35 + amountScore * 0.2;
 }
 
 async function matchSlotToMaterial(slotCanvas) {
@@ -1648,19 +1757,24 @@ function clearScreenshotImport(resetInput = true) {
     URL.revokeObjectURL(screenshotObjectUrl);
     screenshotObjectUrl = "";
   }
+  if (screenshotBitmap) {
+    screenshotBitmap.close();
+    screenshotBitmap = null;
+  }
 
   detectedScreenshotMatches = [];
   renderScreenshotResults();
   screenshotPreview.hidden = true;
   screenshotPreview.removeAttribute("src");
   screenshotPreviewEmpty.hidden = false;
+  screenshotScanButton.disabled = true;
   screenshotImportButton.disabled = true;
 
   if (resetInput && screenshotFileInput) {
     screenshotFileInput.value = "";
   }
 
-  setScreenshotStatus("Upload a screenshot, then click on each resource slot you want to detect.");
+  setScreenshotStatus("Upload a screenshot, then scan the visible inventory slots.");
 }
 
 function setScreenshotStatus(message) {
