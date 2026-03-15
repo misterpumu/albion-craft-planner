@@ -51,19 +51,18 @@ function initializeWorker(payload) {
 
 function analyzeInventory(payload) {
   const inventory = payload?.inventory || {};
-  const destinySettings = payload?.destinySettings || {};
-  const cacheKey = `${payload?.inventoryKey || ""}::${buildDestinyFilterKey(destinySettings)}`;
+  const cacheKey = payload?.inventoryKey || "";
   if (inventoryAnalysisCache.has(cacheKey)) {
     return inventoryAnalysisCache.get(cacheKey);
   }
 
   const plans = [];
-  const relevantRecipeSet = collectRelevantRecipes(inventory, cacheKey, destinySettings);
-  const candidatePool = finalRecipeCandidates.filter((recipe) => relevantRecipeSet.has(recipe.id) && isRecipeUnlocked(recipe, destinySettings));
+  const relevantRecipeSet = collectRelevantRecipes(inventory, cacheKey);
+  const candidatePool = finalRecipeCandidates.filter((recipe) => relevantRecipeSet.has(recipe.id));
   const sharedRecipeMemo = new Map();
 
   for (const recipe of candidatePool) {
-    const result = craftAsManyAsPossible(recipe, cloneStock(inventory), sharedRecipeMemo, destinySettings);
+    const result = craftAsManyAsPossible(recipe, cloneStock(inventory), sharedRecipeMemo);
     if (!result) continue;
 
     plans.push(serializePlan(recipe, result, inventory, "Consumed materials", "This route uses the materials already present in your inventory."));
@@ -71,8 +70,8 @@ function analyzeInventory(payload) {
   }
 
   if (!plans.length) {
-    for (const recipe of recipes.filter((entry) => entry.plannerType === "refine" && relevantRecipeSet.has(entry.id) && isRecipeUnlocked(entry, destinySettings))) {
-      const result = craftAsManyAsPossible(recipe, cloneStock(inventory), sharedRecipeMemo, destinySettings);
+    for (const recipe of recipes.filter((entry) => entry.plannerType === "refine" && relevantRecipeSet.has(entry.id))) {
+      const result = craftAsManyAsPossible(recipe, cloneStock(inventory), sharedRecipeMemo);
       if (!result) continue;
       plans.push(serializePlan(recipe, result, inventory, "Consumed materials", "This route uses the materials already present in your inventory."));
     }
@@ -93,20 +92,19 @@ function analyzeTarget(payload) {
   const inventory = payload?.inventory || {};
   const targetName = payload?.targetName || "";
   const desiredAmount = Math.max(1, Number(payload?.desiredAmount) || 1);
-  const destinySettings = payload?.destinySettings || {};
-  const cacheKey = `${payload?.inventoryKey || ""}::${targetName}::${desiredAmount}::${buildDestinyFilterKey(destinySettings)}`;
+  const cacheKey = `${payload?.inventoryKey || ""}::${targetName}::${desiredAmount}`;
   if (targetAnalysisCache.has(cacheKey)) {
     return targetAnalysisCache.get(cacheKey);
   }
 
-  const recipe = getPrimaryRecipeForName(targetName, destinySettings);
+  const recipe = getPrimaryRecipeForName(targetName);
   if (!recipe) {
     const empty = { found: false };
     targetAnalysisCache.set(cacheKey, empty);
     return empty;
   }
 
-  const result = planTargetRequirements(recipe, desiredAmount, inventory, destinySettings);
+  const result = planTargetRequirements(recipe, desiredAmount, inventory);
   const consumed = collectConsumed(inventory, result.stock);
   const missingList = toNamedAmountList(result.missing);
   const payloadResult = {
@@ -168,7 +166,7 @@ function buildIngredientRecipeIndex(recipeList) {
   return index;
 }
 
-function collectRelevantRecipes(sourceInventory, cacheKey = buildInventoryKey(sourceInventory), destinySettings = {}) {
+function collectRelevantRecipes(sourceInventory, cacheKey = buildInventoryKey(sourceInventory)) {
   if (relevantRecipeCache.has(cacheKey)) {
     return new Set(relevantRecipeCache.get(cacheKey));
   }
@@ -181,7 +179,7 @@ function collectRelevantRecipes(sourceInventory, cacheKey = buildInventoryKey(so
 
   while (queue.length) {
     const itemName = queue.shift();
-    const dependentRecipes = (ingredientRecipeIndex.get(itemName) || []).filter((recipe) => isRecipeUnlocked(recipe, destinySettings));
+    const dependentRecipes = ingredientRecipeIndex.get(itemName) || [];
 
     dependentRecipes.forEach((recipe) => {
       if (!relevant.has(recipe.id)) {
@@ -199,13 +197,13 @@ function collectRelevantRecipes(sourceInventory, cacheKey = buildInventoryKey(so
   return relevant;
 }
 
-function craftAsManyAsPossible(recipe, initialStock, sharedMemo = new Map(), destinySettings = {}) {
+function craftAsManyAsPossible(recipe, initialStock, sharedMemo = new Map()) {
   let currentStock = cloneStock(initialStock);
   let outputCount = 0;
   let allSteps = [];
 
   while (true) {
-    const crafted = craftRecipe(recipe, currentStock, new Set(), 0, sharedMemo, destinySettings);
+    const crafted = craftRecipe(recipe, currentStock, new Set(), 0, sharedMemo);
     if (!crafted) break;
 
     currentStock = crafted.stock;
@@ -222,8 +220,7 @@ function craftAsManyAsPossible(recipe, initialStock, sharedMemo = new Map(), des
   };
 }
 
-function craftRecipe(recipe, stock, trail, depth, memo, destinySettings = {}) {
-  if (!isRecipeUnlocked(recipe, destinySettings)) return null;
+function craftRecipe(recipe, stock, trail, depth, memo) {
   if (depth > 6 || trail.has(recipe.outputName)) return null;
 
   const cacheKey = `${recipe.id}|${depth}|${buildInventoryKey(stock)}`;
@@ -238,7 +235,7 @@ function craftRecipe(recipe, stock, trail, depth, memo, destinySettings = {}) {
   nextTrail.add(recipe.outputName);
 
   for (const [ingredientName, ingredientCount] of Object.entries(recipe.ingredients)) {
-      const resolved = satisfyNeed(ingredientName, ingredientCount, currentStock, nextTrail, depth + 1, memo, destinySettings);
+    const resolved = satisfyNeed(ingredientName, ingredientCount, currentStock, nextTrail, depth + 1, memo);
     if (!resolved) {
       memo.set(cacheKey, null);
       return null;
@@ -262,7 +259,7 @@ function craftRecipe(recipe, stock, trail, depth, memo, destinySettings = {}) {
   return result;
 }
 
-function satisfyNeed(itemName, count, stock, trail, depth, memo, destinySettings = {}) {
+function satisfyNeed(itemName, count, stock, trail, depth, memo) {
   const available = stock[itemName] || 0;
   if (available >= count) {
     const nextStock = cloneStock(stock);
@@ -274,7 +271,7 @@ function satisfyNeed(itemName, count, stock, trail, depth, memo, destinySettings
   }
 
   const missing = count - available;
-  const producers = (recipeIndex.get(itemName) || []).filter((recipe) => !trail.has(recipe.outputName) && isRecipeUnlocked(recipe, destinySettings));
+  const producers = (recipeIndex.get(itemName) || []).filter((recipe) => !trail.has(recipe.outputName));
   if (!producers.length) return null;
 
   let best = null;
@@ -288,7 +285,7 @@ function satisfyNeed(itemName, count, stock, trail, depth, memo, destinySettings
     currentStock[itemName] = 0;
 
     for (let run = 0; run < runs; run += 1) {
-        const crafted = craftRecipe(producer, currentStock, trail, depth + 1, memo, destinySettings);
+      const crafted = craftRecipe(producer, currentStock, trail, depth + 1, memo);
       if (!crafted) {
         possible = false;
         break;
@@ -315,10 +312,7 @@ function satisfyNeed(itemName, count, stock, trail, depth, memo, destinySettings
   return best;
 }
 
-function planTargetRequirements(recipe, desiredAmount, sourceInventory, destinySettings = {}) {
-  if (!isRecipeUnlocked(recipe, destinySettings)) {
-    return { stock: cloneStock(sourceInventory), steps: [], missing: { [recipe.outputName]: desiredAmount } };
-  }
+function planTargetRequirements(recipe, desiredAmount, sourceInventory) {
   const stock = cloneStock(sourceInventory);
   const steps = [];
   const missing = {};
@@ -326,7 +320,7 @@ function planTargetRequirements(recipe, desiredAmount, sourceInventory, destinyS
   const requirementMemo = new Map();
 
   for (let run = 0; run < runs; run += 1) {
-      const resolved = resolveRecipeWithRequirements(recipe, stock, new Set(), 0, requirementMemo, destinySettings);
+    const resolved = resolveRecipeWithRequirements(recipe, stock, new Set(), 0, requirementMemo);
     steps.push(...resolved.steps);
     mergeCounts(missing, resolved.missing);
   }
@@ -334,10 +328,7 @@ function planTargetRequirements(recipe, desiredAmount, sourceInventory, destinyS
   return { stock, steps, missing };
 }
 
-function resolveRecipeWithRequirements(recipe, stock, trail, depth, memo, destinySettings = {}) {
-  if (!isRecipeUnlocked(recipe, destinySettings)) {
-    return { stock, steps: [], missing: { [recipe.outputName]: 1 } };
-  }
+function resolveRecipeWithRequirements(recipe, stock, trail, depth, memo) {
   if (depth > 8 || trail.has(recipe.outputName)) {
     return { stock, steps: [], missing: { [recipe.outputName]: 1 } };
   }
@@ -359,7 +350,7 @@ function resolveRecipeWithRequirements(recipe, stock, trail, depth, memo, destin
   nextTrail.add(recipe.outputName);
 
   for (const [ingredientName, ingredientCount] of Object.entries(recipe.ingredients)) {
-      const resolved = resolveNeedWithRequirements(ingredientName, ingredientCount, currentStock, nextTrail, depth + 1, memo, destinySettings);
+    const resolved = resolveNeedWithRequirements(ingredientName, ingredientCount, currentStock, nextTrail, depth + 1, memo);
     currentStock = resolved.stock;
     steps = steps.concat(resolved.steps);
     mergeCounts(missing, resolved.missing);
@@ -381,7 +372,7 @@ function resolveRecipeWithRequirements(recipe, stock, trail, depth, memo, destin
   return result;
 }
 
-function resolveNeedWithRequirements(itemName, count, stock, trail, depth, memo, destinySettings = {}) {
+function resolveNeedWithRequirements(itemName, count, stock, trail, depth, memo) {
   const available = stock[itemName] || 0;
   if (available >= count) {
     stock[itemName] = available - count;
@@ -391,7 +382,7 @@ function resolveNeedWithRequirements(itemName, count, stock, trail, depth, memo,
   const missingCount = count - available;
   stock[itemName] = 0;
 
-  const producers = (recipeIndex.get(itemName) || []).filter((recipe) => !recipe.enchanted && !trail.has(recipe.outputName) && isRecipeUnlocked(recipe, destinySettings));
+  const producers = (recipeIndex.get(itemName) || []).filter((recipe) => !recipe.enchanted && !trail.has(recipe.outputName));
   if (!producers.length) {
     return {
       stock,
@@ -409,7 +400,7 @@ function resolveNeedWithRequirements(itemName, count, stock, trail, depth, memo,
     const runs = Math.ceil(missingCount / Math.max(1, producer.output || 1));
 
     for (let run = 0; run < runs; run += 1) {
-        const resolved = resolveRecipeWithRequirements(producer, candidateStock, trail, depth + 1, memo, destinySettings);
+      const resolved = resolveRecipeWithRequirements(producer, candidateStock, trail, depth + 1, memo);
       candidateStock = resolved.stock;
       candidateSteps = candidateSteps.concat(resolved.steps);
       mergeCounts(candidateMissing, resolved.missing);
@@ -508,8 +499,8 @@ function buildInventoryKey(stock) {
     .join("|");
 }
 
-function getPrimaryRecipeForName(name, destinySettings = {}) {
-  return (recipeIndex.get(name) || []).find((recipe) => !recipe.enchanted && isRecipeUnlocked(recipe, destinySettings)) || null;
+function getPrimaryRecipeForName(name) {
+  return (recipeIndex.get(name) || []).find((recipe) => !recipe.enchanted) || null;
 }
 
 function isFinalRecipe(recipe) {
@@ -524,21 +515,4 @@ function scoreRecipe(recipe) {
 
 function parseTier(tierString) {
   return Number(String(tierString).split(".")[0]) || 0;
-}
-
-function buildDestinyFilterKey(destinySettings = {}) {
-  if (!destinySettings.enabled) return "all";
-  return Object.entries(destinySettings.lines || {})
-    .sort((left, right) => left[0].localeCompare(right[0]))
-    .map(([key, tier]) => `${key}:${tier}`)
-    .join("|");
-}
-
-function isRecipeUnlocked(recipe, destinySettings = {}) {
-  if (!destinySettings.enabled) return true;
-  if (!recipe || recipe.enchanted) return false;
-  if (!recipe.destinyKey) return true;
-  const tier = Number(recipe.destinyTier || parseTier(recipe.tier));
-  if (tier < 2) return true;
-  return Number((destinySettings.lines || {})[recipe.destinyKey] || 0) >= tier;
 }
