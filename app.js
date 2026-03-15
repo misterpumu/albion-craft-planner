@@ -110,6 +110,14 @@ const FISH_ITEMS = [
   "Special Fish Sauce",
   "Chopped Fish"
 ];
+const EXTRA_SEARCHABLE_TARGETS = new Set([
+  "Chopped Fish",
+  "Basic Fish Sauce",
+  "Fancy Fish Sauce",
+  "Special Fish Sauce",
+  "Grilled Fish",
+  "Seaweed Salad"
+]);
 
 const inventory = loadInventory();
 const routeSettings = loadRouteSettings();
@@ -311,7 +319,7 @@ function loadCatalog() {
     .sort((left, right) => scoreRecipe(right) - scoreRecipe(left));
   initializePlannerWorker(recipes);
   searchableMaterials = collectSearchableMaterials(recipes);
-  searchableTargets = collectSearchableTargets(finalRecipeCandidates);
+  searchableTargets = collectSearchableTargets(recipes);
   categoryOptions = [ALL_CATEGORIES, ...new Set(recipes.filter(isFinalRecipe).map((recipe) => recipe.category))];
 
   renderInventory();
@@ -1313,10 +1321,19 @@ function collectSearchableMaterials(recipeList) {
 
 function collectSearchableTargets(recipeList) {
   return recipeList
-    .filter((recipe) => !isLikelyNonCraftable(recipe.outputName))
+    .filter((recipe) => isSearchableTargetRecipe(recipe))
     .map((recipe) => recipe.outputName)
     .filter((name, index, list) => list.indexOf(name) === index)
     .sort((left, right) => left.localeCompare(right));
+}
+
+function isSearchableTargetRecipe(recipe) {
+  if (!recipe || recipe.plannerType !== "craft") return false;
+  if (recipe.enchanted) return false;
+  if (isLikelyNonCraftable(recipe.outputName)) return false;
+  if (recipe.outputName.includes(" .")) return false;
+  if (EXTRA_SEARCHABLE_TARGETS.has(recipe.outputName)) return true;
+  return true;
 }
 
 function looksLikeMaterial(name) {
