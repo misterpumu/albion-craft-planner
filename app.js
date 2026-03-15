@@ -52,6 +52,13 @@ const RESOURCE_LINES = [
     refinedNames: ["Stiff Leather", "Thick Leather", "Reinforced Leather", "Worked Leather", "Hardened Leather", "Fortified Leather", "Imbued Leather"],
     rawIdPrefix: "HIDE",
     refinedIdPrefix: "LEATHER"
+  },
+  {
+    family: "Stone",
+    rawNames: ["Limestone", "Sandstone", "Travertine", "Granite", "Slate", "Basalt", "Marble"],
+    refinedNames: ["Limestone Block", "Sandstone Block", "Travertine Block", "Granite Block", "Slate Block", "Basalt Block", "Marble Block"],
+    rawIdPrefix: "ROCK",
+    refinedIdPrefix: "STONEBLOCK"
   }
 ];
 
@@ -519,6 +526,8 @@ function refineStationFor(family) {
       return "Weaver";
     case "Cuero":
       return "Tanner";
+    case "Stone":
+      return "Stonecutter";
     default:
       return "Refining Station";
   }
