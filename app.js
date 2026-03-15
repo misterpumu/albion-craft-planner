@@ -173,6 +173,8 @@ let selectedTargetName = "";
 let plannerWorker = null;
 let workerRequestCounter = 0;
 const workerRequests = new Map();
+let detectedOcrMatches = [];
+let ocrRunning = false;
 
 const inventoryList = document.querySelector("#inventory-list");
 const materialPickerSearch = document.querySelector("#material-picker-search");
@@ -185,6 +187,11 @@ const analyzeTargetButton = document.querySelector("#analyze-target-button");
 const targetPlan = document.querySelector("#target-plan");
 const bulkInput = document.querySelector("#bulk-input");
 const applyBulkButton = document.querySelector("#apply-bulk-button");
+const ocrFileInput = document.querySelector("#ocr-file-input");
+const ocrRunButton = document.querySelector("#ocr-run-button");
+const ocrImportButton = document.querySelector("#ocr-import-button");
+const ocrStatus = document.querySelector("#ocr-status");
+const ocrResults = document.querySelector("#ocr-results");
 const resetButton = document.querySelector("#reset-button");
 const searchInput = document.querySelector("#search-input");
 const categoryFilter = document.querySelector("#category-filter");
@@ -262,6 +269,9 @@ function bindEvents() {
     renderMaterialPicker();
     markPlannerDirty();
   });
+
+  ocrRunButton.addEventListener("click", runInventoryOcr);
+  ocrImportButton.addEventListener("click", importDetectedOcrMaterials);
 
   resetButton.addEventListener("click", () => {
     Object.keys(inventory).forEach((name) => {
@@ -1357,6 +1367,214 @@ function collectSearchableTargets(recipeList) {
     .map((recipe) => recipe.outputName)
     .filter((name, index, list) => list.indexOf(name) === index)
     .sort((left, right) => left.localeCompare(right));
+}
+
+async function runInventoryOcr() {
+  if (ocrRunning) return;
+  const file = ocrFileInput.files?.[0];
+  if (!file) {
+    setOcrStatus("Choose a screenshot first.");
+    return;
+  }
+  if (!window.Tesseract) {
+    setOcrStatus("OCR library not available. Reload the page and try again.");
+    return;
+  }
+
+  ocrRunning = true;
+  ocrRunButton.disabled = true;
+  ocrImportButton.disabled = true;
+  detectedOcrMatches = [];
+  renderOcrResults();
+  setOcrStatus("Scanning visible text...");
+
+  try {
+    const canvas = await buildOcrCanvas(file);
+    const result = await window.Tesseract.recognize(canvas, "eng", {
+      logger: (message) => {
+        if (message.status === "recognizing text") {
+          setOcrStatus(`Scanning visible text... ${Math.round((message.progress || 0) * 100)}%`);
+        }
+      }
+    });
+
+    detectedOcrMatches = extractMaterialsFromOcr(result.data || {});
+    renderOcrResults();
+
+    if (detectedOcrMatches.length) {
+      setOcrStatus(`Detected ${detectedOcrMatches.length} material name(s). Import them and then set quantities manually.`);
+      ocrImportButton.disabled = false;
+    } else {
+      setOcrStatus("No clear material names found. Try a screenshot where the tooltip text is sharp and visible.");
+    }
+  } catch (error) {
+    setOcrStatus(`OCR failed: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    ocrRunning = false;
+    ocrRunButton.disabled = false;
+  }
+}
+
+async function buildOcrCanvas(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(2.4, 2200 / Math.max(1, bitmap.width));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+
+  for (let index = 0; index < data.length; index += 4) {
+    const gray = Math.round(data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114);
+    const boosted = gray > 168 ? 255 : gray < 84 ? 0 : gray;
+    data[index] = boosted;
+    data[index + 1] = boosted;
+    data[index + 2] = boosted;
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+function extractMaterialsFromOcr(ocrData) {
+  const lines = buildOcrLines(ocrData.words || []);
+  const matches = new Map();
+
+  lines.forEach((line, index) => {
+    const candidates = [
+      line.text,
+      `${line.text} ${(lines[index + 1]?.text || "").trim()}`.trim()
+    ].filter(Boolean);
+
+    candidates.forEach((candidateText) => {
+      const best = findBestMaterialMatch(candidateText);
+      if (!best) return;
+      if (!matches.has(best.name) || best.score > matches.get(best.name).score) {
+        matches.set(best.name, { name: best.name, score: best.score, sample: candidateText });
+      }
+    });
+  });
+
+  return Array.from(matches.values())
+    .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name))
+    .slice(0, 16);
+}
+
+function buildOcrLines(words) {
+  const filtered = words
+    .filter((word) => word?.text && String(word.text).trim())
+    .map((word) => ({
+      text: String(word.text).trim(),
+      y: Math.round((((word.bbox?.y0 || 0) + (word.bbox?.y1 || 0)) / 2))
+    }))
+    .sort((left, right) => left.y - right.y);
+
+  const rows = [];
+  filtered.forEach((word) => {
+    const current = rows[rows.length - 1];
+    if (!current || Math.abs(current.y - word.y) > 22) {
+      rows.push({ y: word.y, words: [word.text] });
+      return;
+    }
+    current.words.push(word.text);
+  });
+
+  return rows.map((row) => ({ text: row.words.join(" ").trim() }));
+}
+
+function findBestMaterialMatch(text) {
+  const normalizedText = normalizeOcrText(text);
+  if (!normalizedText) return null;
+
+  let best = null;
+  searchableMaterials.forEach((name) => {
+    const normalizedName = normalizeOcrText(name);
+    if (!normalizedName || normalizedName.length < 4) return;
+
+    let score = 0;
+    if (normalizedText.includes(normalizedName)) {
+      score = normalizedName.length + 24;
+    } else {
+      const textTokens = new Set(normalizedText.split(" ").filter(Boolean));
+      const nameTokens = normalizedName.split(" ").filter(Boolean);
+      const overlap = nameTokens.filter((token) => textTokens.has(token)).length;
+      score = overlap * 7 - Math.abs(nameTokens.length - textTokens.size);
+      if (overlap === nameTokens.length && overlap > 0) {
+        score += 12;
+      }
+    }
+
+    if (!best || score > best.score) {
+      best = { name, score };
+    }
+  });
+
+  return best && best.score >= 9 ? best : null;
+}
+
+function normalizeOcrText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s']/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function renderOcrResults() {
+  ocrResults.innerHTML = "";
+
+  if (!detectedOcrMatches.length) {
+    ocrResults.innerHTML = `<p class="helper-text">No OCR matches ready yet.</p>`;
+    return;
+  }
+
+  detectedOcrMatches.forEach((entry) => {
+    const node = document.createElement("article");
+    node.className = "ocr-result";
+    node.innerHTML = `
+      <div class="ocr-result__main">
+        <span class="item-avatar">
+          <img class="item-avatar__img" alt="" loading="lazy">
+          <span class="item-avatar__fallback"></span>
+        </span>
+        <div>
+          <h3 class="ocr-result__name"></h3>
+          <p class="ocr-result__meta"></p>
+        </div>
+      </div>
+      <span class="ocr-result__amount"></span>
+    `;
+
+    node.querySelector(".ocr-result__name").textContent = entry.name;
+    node.querySelector(".ocr-result__meta").textContent = `Detected from visible text: ${entry.sample}`;
+    node.querySelector(".ocr-result__amount").textContent = "x1";
+    hydrateIcon(node.querySelector(".item-avatar"), entry.name);
+    ocrResults.appendChild(node);
+  });
+}
+
+function importDetectedOcrMaterials() {
+  if (!detectedOcrMatches.length) return;
+
+  detectedOcrMatches.forEach((entry) => {
+    if (!inventory[entry.name]) {
+      inventory[entry.name] = 1;
+    }
+  });
+
+  saveInventory();
+  renderInventory();
+  scheduleMaterialPickerRefresh(true);
+  markPlannerDirty();
+  setOcrStatus(`Imported ${detectedOcrMatches.length} detected material(s) with amount 1.`);
+}
+
+function setOcrStatus(message) {
+  ocrStatus.textContent = message;
 }
 
 function isSearchableTargetRecipe(recipe) {
